@@ -5,6 +5,7 @@
 var vnb = require('./vnb.js');
 var evRecalc = require('./ev-recalc.js');
 var rbcSurplus = require('./rbc-surplus.js');
+var reinsurance = require('./reinsurance.js');
 var EFENG = {};
-[vnb, evRecalc, rbcSurplus].forEach(function (m) { for (var k in m) EFENG[k] = m[k]; });
+[vnb, evRecalc, rbcSurplus, reinsurance].forEach(function (m) { for (var k in m) EFENG[k] = m[k]; });
 module.exports = EFENG;

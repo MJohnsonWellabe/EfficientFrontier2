@@ -102,27 +102,75 @@
       return sc;
     }
 
+    // ---- reinsurance is active? (opt-in MS quota share; OFF => everything below is a no-op) ----
+    function reinsActive() { return !!(S.reinsurance && S.reinsurance.on); }
+
+    // ---- reinsurance -> TAC adjustment (cumulative net surplus impact of the treaty) ----
+    // tacFlow[y] is the per-year after-tax surplus change (ceding commissions received
+    // minus the underwriting profit ceded), computed ONCE in computeBaseline. Added
+    // cumulatively to TAC exactly like the surplus note. The required-capital relief is
+    // handled separately by scaling the MS charges (reinsuranceRBCScale / scaleMSCharges).
+    function applyReinsToSurplus(sc, tacFlow) {
+      if (!tacFlow) return sc;
+      var cum = 0, cumByYear = {};
+      for (var y = 2025; y <= 2055; y++) { cum += (tacFlow[y] || 0); cumByYear[y] = cum; }
+      Object.keys(sc).forEach(function (yk) {
+        var y = +yk, d = sc[y]; if (!d) return;
+        var adj = cumByYear[y] || 0;
+        d.tac = d.tac + adj; d.ratio = d.reqCap ? d.tac / d.reqCap : d.ratio; d.reinsAdj = adj;
+      });
+      return sc;
+    }
+
     // ---- baseline (NEVER sees the growth schedule; anchors MODEL_CANON §1) ----
     function computeBaseline() {
       if (!S.ev || !S.ts || !S.surplus) return;
-      S.ev2026 = { rows: S.ev.rows.filter(function (r) { return r.iy === '2026'; }), maxP: S.ev.maxP };
+      // Reinsurance (MS quota share) is computed ONCE here, deterministically. When ON,
+      // the working EV is the "retained EV" (MS underwriting lines net of cession); the
+      // efficient-frontier scenarios then scale off this reinsured baseline (buildScen),
+      // never re-running the cession. When OFF, evWork === S.ev and every line below is
+      // byte-identical to the no-reinsurance model.
+      var riOn = reinsActive();
+      S.evRetained = riOn ? EFENG.buildRetainedEV(S.ev, S.reinsurance) : null;
+      var evWork = S.evRetained || S.ev;
+      S.ev2026 = { rows: evWork.rows.filter(function (r) { return r.iy === '2026'; }), maxP: evWork.maxP };
       var P = S.params.assum, ys = S.years.filter(function (y) { return y <= 2035; });
       var vnbs = {}, origFull = {};
       var vnb26 = {};
       PRODS.forEach(function (c) {
-        vnbs[c] = { v: EFENG.buildVNB(S.ev, c, { assum: P }, { nMonths: 360 }), full: evFullBook(S.ev, c, null, null) };
+        vnbs[c] = { v: EFENG.buildVNB(evWork, c, { assum: P }, { nMonths: 360 }), full: evFullBook(evWork, c, null, null) };
         vnbs[c].r = EFENG.vnbResults(vnbs[c].v, P.disc); origFull[c] = vnbs[c].full;
-        vnb26[c] = EFENG.buildVNB(S.ev, c, { assum: P }, { nMonths: 360, iy: '2026' });
+        vnb26[c] = EFENG.buildVNB(evWork, c, { assum: P }, { nMonths: 360, iy: '2026' });
       });
-      S.origLIF = {}; PRODS.forEach(function (c) { S.origLIF[c] = EFENG.evMonthly(S.ev, c, 'LivesInForce1'); });
-      S.origClaims = {}; PRODS.forEach(function (c) { S.origClaims[c] = EFENG.evMonthly(S.ev, c, 'IncClaims'); });
+      S.origLIF = {}; PRODS.forEach(function (c) { S.origLIF[c] = EFENG.evMonthly(evWork, c, 'LivesInForce1'); });
+      S.origClaims = {}; PRODS.forEach(function (c) { S.origClaims[c] = EFENG.evMonthly(evWork, c, 'IncClaims'); });
       var sc = EFENG.surplusCalc(S.ts, S.surplus, S.params.ts_adj, ys);
+      // Reinsurance baseline economics (only when ON): retained-share RBC charge scaling,
+      // ceding commissions, and the per-year after-tax surplus impact carried to TAC.
+      var reins = null;
+      if (riOn) {
+        EFENG.scaleMSCharges(sc, EFENG.retainedRatios(S.ev, S.reinsurance, ys));   // lower MS required capital
+        var comm = EFENG.cedingCommissions(S.ev, S.reinsurance);                   // $M/yr ceding commissions
+        var grossMSfull = evFullBook(S.ev, 'MS', null, null);                      // MS full book, GROSS
+        var tax = (P.tax != null) ? P.tax : 0.21, atf = 1 - tax;
+        var tacFlow = {}, commAT = {};
+        for (var yy = 2026; yy <= 2055; yy++) {
+          var cededUW = (grossMSfull.annual.PTI[yy] || 0) - (origFull.MS.annual.PTI[yy] || 0);  // MS pretax profit ceded
+          commAT[yy] = (comm.total[yy] || 0) * atf;
+          tacFlow[yy] = ((comm.total[yy] || 0) - cededUW) * atf;                   // ceding commissions − ceded profit, after tax
+        }
+        reins = { comm: comm, tacFlow: tacFlow, commAT: commAT };
+        S.baselineReins = reins;       // consumed by buildScen so scenarios inherit the same treaty cash flows
+      } else {
+        S.baselineReins = null;
+      }
       applyNoteToSurplus(sc);
+      if (reins) applyReinsToSurplus(sc, reins.tacFlow);
       var minRBC = Math.min.apply(null, [2026, 2027, 2028, 2029, 2030].map(function (y) { return sc[y].ratio; }));
-      var de = []; for (var y = 2026; y <= 2055; y++)de.push(PRODS.reduce(function (s, c) { return s + (vnbs[c].v.annual.DE[y] || 0); }, 0));
+      var de = []; for (var y = 2026; y <= 2055; y++)de.push(PRODS.reduce(function (s, c) { return s + (vnbs[c].v.annual.DE[y] || 0); }, 0) + (reins ? (reins.commAT[y] || 0) : 0));
       var de26 = []; for (var y = 2026; y <= 2055; y++)de26.push(PRODS.reduce(function (s, c) { return s + (vnb26[c].annual.DE[y] || 0); }, 0));
       var npv26 = EFENG.npv(P.disc, de26), irr26b = EFENG.irr(de26);
-      S.baseline = { vnbs: vnbs, vnb26: vnb26, origFull: origFull, surplusCalc: sc, minRBC: minRBC, portIRR: EFENG.irr(de), portNPV: EFENG.npv(P.disc, de), npv26: npv26, irr26: irr26b };
+      S.baseline = { vnbs: vnbs, vnb26: vnb26, origFull: origFull, surplusCalc: sc, minRBC: minRBC, portIRR: EFENG.irr(de), portNPV: EFENG.npv(P.disc, de), npv26: npv26, irr26: irr26b, reins: reins };
       return S.baseline;
     }
 
@@ -202,7 +250,9 @@
     // When absent, every call is the original single valuation -> §1 / frontier path unchanged.
     function buildScen(sales, claims, lapse, nier) {
       var P = S.params.assum, sc = mkScalars(sales, claims, lapse);
-      var rec = EFENG.recalcEV(S.ev, sc), recNB = {}, recFull = {}, recLIF = {};
+      // Scenario VNB recalcs off the working EV: the reinsured ("retained") EV when the
+      // treaty is ON, so MS cession is inherited here without re-applying it; S.ev when OFF.
+      var rec = EFENG.recalcEV(S.evRetained || S.ev, sc), recNB = {}, recFull = {}, recLIF = {};
       var nComb = (nier && nier.combined) || null, nProc = (nier && nier.proc) || null;
       var recClaims = {}; PRODS.forEach(function (c) { recNB[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, nierShift: (nComb && nComb[c]) || null }); recFull[c] = evFullBook(rec, c, nComb && nComb[c], nProc && nProc[c]); recLIF[c] = EFENG.evMonthly(rec, c, 'LivesInForce1'); recClaims[c] = EFENG.evMonthly(rec, c, 'IncClaims'); });
       var baseSc = S.baseline.surplusCalc, ys = S.years.filter(function (y) { return y <= 2035; }), sr = {};
@@ -226,7 +276,12 @@
         sr[y] = { prod: prod, allOther: baseSc[y].allOther, tot: tot, postCov: pc, reqCap: rq, tac: tac, ratio: tac / rq, incDelta: id, baseRatio: baseSc[y].ratio };
       });
       applyNoteToSurplus(sr);
-      var de = {}, cumDE = {}, cum = 0; for (var y = 2026; y <= 2055; y++) { de[y] = PRODS.reduce(function (s, c) { return s + (recNB[c].annual.DE[y] || 0); }, 0); cum += de[y]; cumDE[y] = cum; }
+      // Reinsurance: scenarios scale off the baseline treaty — the same per-year after-tax
+      // surplus flow (commissions − ceded profit) computed once in computeBaseline. The
+      // required-capital relief is already inherited via baseSc (its MS charges were scaled).
+      var rB = S.baselineReins;
+      if (rB) applyReinsToSurplus(sr, rB.tacFlow);
+      var de = {}, cumDE = {}, cum = 0; for (var y = 2026; y <= 2055; y++) { de[y] = PRODS.reduce(function (s, c) { return s + (recNB[c].annual.DE[y] || 0); }, 0) + (rB ? (rB.commAT[y] || 0) : 0); cum += de[y]; cumDE[y] = cum; }
       var deStream = []; for (var y = 2026; y <= 2055; y++)deStream.push(de[y]);
       var portIRR = EFENG.irr(deStream), portNPV = EFENG.npv(P.disc, deStream);
 

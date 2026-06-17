@@ -69,6 +69,15 @@ function buildState(EFENG, dataDir, growth) {
     nScen: 100, nStoch: 100, slowMode: false,
     cons: { rbcFloor: 4.0, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.15, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -150, rbcTailX: 3.5, rbcTailY: 0.25 },
     surplusNote: { on: true, amount: 150, tenor: 10, rate: 0.09, fees: 0.03, nierSN: 0.04, startDate: '2026-06-30' },
+    // Reinsurance — MS quota share, OFF by default (no treaty). Mirrors viewer S init / Reinsurance tab.
+    // cede: retained-share cession % by MS issue year; lagYears: 1-yr cession lag; commUpfront: $M
+    // front-end ceding commission by year; commTable: ongoing $/policy/yr sliding scale by loss-ratio band.
+    reinsurance: {
+      on: false, lagYears: 1,
+      cede: { '<2026': 0.25, '2026': 0.25, '2027': 0.25, '2028': 0.25, '2029': 0.25, '2030': 0.25, '2031': 0.25, '2032': 0.25, '2033': 0.25, '2034': 0.25, '2035': 0.25 },
+      commUpfront: { 2026: 10, 2027: 5, 2028: 5 },
+      commTable: [[0, 0.75, 250], [0.75, 0.85, 200], [0.85, 0.95, 150], [0.95, Infinity, 100]]
+    },
     results: []
   };
 }
