@@ -83,13 +83,22 @@ hash** of the password (plaintext is never committed). To change the password, r
 and update the `EXPECTED`/guard hash in **both** `index.html` and `viewer/index.html`. Real protection
 would require private Pages (Enterprise) or an authenticated host.
 
-## Reinsurance (MS quota share — opt-in toggle, OFF by default)
+## Reinsurance (MS quota share — toggle, ON by default at 10%)
 A Medicare-Supplement-only quota-share treaty, modeled like the surplus note: a toggle plus config
-mirrored in three places (`viewer/index.html` Reinsurance tab inputs, `viewer/app.js` `S.reinsurance`
-init, `runner/defaults.js`), passed to the worker in `runFrontier`'s `cfg`, and re-read by
-`readReinsurance()`. Engine lives in **`src/reinsurance.js`** (`buildRetainedEV`, `retainedRatios`,
-`scaleMSCharges`, `cedingCommissions`, `lookupCco`, `reinsCedeRate`). Default is **OFF** — when off,
-nothing runs and every result (incl. `runner/validate.js` §1 and the full frontier) is byte-identical.
+mirrored in three places (`viewer/index.html` **Config-tab Reinsurance section** — under the surplus
+note — `viewer/app.js` `S.reinsurance` init, `runner/defaults.js`), passed to the worker in
+`runFrontier`'s `cfg`, and re-read by `readReinsurance()`. Engine lives in **`src/reinsurance.js`**
+(`buildRetainedEV`, `retainedRatios`, `scaleMSCharges`, `cedingCommissions`, `lookupCco`,
+`reinsCedeRate`). Default is **ON at 10% cede every issue year** (1-yr lag, 10-5-5 upfront, sliding-scale
+ongoing). When **off**, nothing runs and every result is byte-identical to the no-treaty model.
+`runner/validate.js` (§1) is **treaty-independent** — it builds VNB/`surplusCalc` directly from `data/`,
+not through `computeBaseline`, so the ON-by-default flip doesn't move the §1 anchors.
+- **Validation:** there's no reinsurance Excel tie in this repo and no second workbook to merge — the
+  reins-ON numbers are tied out **transitively to Excel via the sibling BlockbusterDeals model**
+  (`reinsurance.js` was ported from `BlockbusterDeals/src/engine.py`, which ties to its own workbook).
+  The gate is **`node runner/reins-tieout.js`** (see `MODEL_CANON §10`): predeal RBC ties exactly all
+  years, net RBC @10% ties over the 2026–2030 planning horizon, commissions exact; the post-2030 run-off
+  tail diverges for documented EV-book reasons. Re-run after any cession-logic edit.
 - **Compute once, scale off the baseline.** Reinsurance is applied **only** in
   `frontier.js → computeBaseline`: a proportional "retained EV" (every MS row × `(1−cede)` with a
   1-year cession lag), MS RBC charges scaled by retained share (lives → premium-related TSCs, claims

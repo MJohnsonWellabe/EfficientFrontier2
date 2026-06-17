@@ -128,7 +128,6 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 <header><div class="hw"><h1>The Efficient Frontier <em>/ Capital Deployment Engine</em></h1><span class="hm" id="hdrMeta">loading…</span></div></header>
 <nav><div id="nav">
   <button data-tab="config" class="active">Configuration</button>
-  <button data-tab="reins" title="Medicare Supplement quota-share reinsurance treaty — toggle on/off to see the frontier with and without">Reinsurance</button>
   <button data-tab="frontier">Efficient Frontier</button>
   <button data-tab="compare" title="Compare all metrics for two scenarios side by side">Compare</button>
   <button data-tab="vnb" title="Value of New Business — projected value created by 2026 sales, by product">VNB by Product</button>
@@ -290,48 +289,34 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
   </div>
 </div>
 
-<div style="margin-bottom:10px;padding:10px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:7px">
-  <span class="lb" style="margin-right:12px">Run mode</span>
-  <label style="margin-right:16px"><input type="radio" name="runMode" id="runModeFast" checked> <strong>Fast</strong> — frontier only (~1 min)</label>
-  <label><input type="radio" name="runMode" id="runModeSlow"> <strong>Slow</strong> — adds the trough-RBC tail constraint (full RBC recompute per stochastic draw; ~4–5 min at 100×100)</label>
-</div>
-<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
-  <button class="btn" id="runBtn" style="min-width:200px;font-size:14px;padding:12px 28px">▶ Run Frontier</button>
-  <span style="font-size:12px;color:var(--muted)" id="runStatus"></span>
-</div>
-<div class="pwrap" id="progWrap"><div class="pfill" id="progFill"></div></div>
-</section>
-
-<!-- ===== REINSURANCE ===== -->
-<section class="tab" id="tab-reins">
 <div class="card" style="margin-bottom:20px">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:6px">
-    <h2 class="sh" style="margin:0">Reinsurance — Medicare Supplement Quota Share</h2>
+    <h2 class="sh" style="margin:0">6 — Reinsurance — Medicare Supplement Quota Share</h2>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">
-      <input type="checkbox" id="ri_on" style="width:16px;height:16px"> Enabled
+      <input type="checkbox" id="ri_on" checked style="width:16px;height:16px"> Enabled
     </label>
   </div>
-  <p class="hint" style="margin-bottom:14px">An opt-in quota-share treaty on the <strong>Medicare Supplement</strong> block (PN and HI are never ceded). The reinsurer assumes the cede share of MS premium, claims, reserves and required capital and pays the cedant <strong>ceding commissions</strong> (an upfront cash schedule plus an ongoing sliding-scale allowance that falls as the loss ratio rises). Business is ceded starting the calendar year after issue (a <strong>1-year lag</strong>). The cession is computed once on the deterministic baseline; the efficient frontier then scales off that reinsured baseline. Toggle this on and re-run to <strong>see the frontier with and without reinsurance</strong>. Default is OFF (no treaty).</p>
+  <p class="hint" style="margin-bottom:14px">An opt-in quota-share treaty on the <strong>Medicare Supplement</strong> block (PN and HI are never ceded). The reinsurer assumes the cede share of MS premium, claims, reserves and required capital and pays the cedant <strong>ceding commissions</strong> (an upfront cash schedule plus an ongoing sliding-scale allowance that falls as the loss ratio rises). Business is ceded starting the calendar year after issue (a <strong>1-year lag</strong>). The cession is computed once on the deterministic baseline; the efficient frontier then scales off that reinsured baseline. Default is <strong>ON at 10%</strong>; uncheck Enabled and re-run to <strong>see the frontier without reinsurance</strong>.</p>
 
   <div id="ri_fields">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
-      <label class="f" style="margin:0"><span class="lb">Set all cede % to</span><input type="number" id="ri_cede_all" value="25" step="5" min="0" max="100" title="Type a value to fill every issue-year cede % below"></label>
+      <label class="f" style="margin:0"><span class="lb">Set all cede % to</span><input type="number" id="ri_cede_all" value="10" step="5" min="0" max="100" title="Type a value to fill every issue-year cede % below"></label>
       <label class="f" style="margin:0"><span class="lb">Cession lag (years)</span><input type="number" id="ri_lag" value="1" step="1" min="0"></label>
     </div>
 
     <div class="lb" style="margin-bottom:6px">Cede % by MS issue year (retained = 100 − cede)</div>
     <div id="ri_cede_grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-bottom:18px">
-      <label class="f" style="margin:0"><span class="lb">&lt;2026</span><input type="number" id="ri_cede_lt2026" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2026</span><input type="number" id="ri_cede_2026" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2027</span><input type="number" id="ri_cede_2027" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2028</span><input type="number" id="ri_cede_2028" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2029</span><input type="number" id="ri_cede_2029" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2030</span><input type="number" id="ri_cede_2030" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2031</span><input type="number" id="ri_cede_2031" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2032</span><input type="number" id="ri_cede_2032" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2033</span><input type="number" id="ri_cede_2033" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2034</span><input type="number" id="ri_cede_2034" value="25" step="5" min="0" max="100"></label>
-      <label class="f" style="margin:0"><span class="lb">2035</span><input type="number" id="ri_cede_2035" value="25" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">&lt;2026</span><input type="number" id="ri_cede_lt2026" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2026</span><input type="number" id="ri_cede_2026" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2027</span><input type="number" id="ri_cede_2027" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2028</span><input type="number" id="ri_cede_2028" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2029</span><input type="number" id="ri_cede_2029" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2030</span><input type="number" id="ri_cede_2030" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2031</span><input type="number" id="ri_cede_2031" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2032</span><input type="number" id="ri_cede_2032" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2033</span><input type="number" id="ri_cede_2033" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2034</span><input type="number" id="ri_cede_2034" value="10" step="5" min="0" max="100"></label>
+      <label class="f" style="margin:0"><span class="lb">2035</span><input type="number" id="ri_cede_2035" value="10" step="5" min="0" max="100"></label>
     </div>
 
     <div class="lb" style="margin-bottom:6px">Upfront ceding commission ($M, cash from reinsurer)</div>
@@ -355,6 +340,17 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
     <div style="overflow:auto"><table id="ri_impactTbl" style="font-size:12px;min-width:520px"></table></div>
   </div>
 </div>
+
+<div style="margin-bottom:10px;padding:10px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:7px">
+  <span class="lb" style="margin-right:12px">Run mode</span>
+  <label style="margin-right:16px"><input type="radio" name="runMode" id="runModeFast" checked> <strong>Fast</strong> — frontier only (~1 min)</label>
+  <label><input type="radio" name="runMode" id="runModeSlow"> <strong>Slow</strong> — adds the trough-RBC tail constraint (full RBC recompute per stochastic draw; ~4–5 min at 100×100)</label>
+</div>
+<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+  <button class="btn" id="runBtn" style="min-width:200px;font-size:14px;padding:12px 28px">▶ Run Frontier</button>
+  <span style="font-size:12px;color:var(--muted)" id="runStatus"></span>
+</div>
+<div class="pwrap" id="progWrap"><div class="pfill" id="progFill"></div></div>
 </section>
 
 <!-- ===== FRONTIER ===== -->
@@ -688,11 +684,11 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- ?v=… cache-busts the engine + app on GitHub Pages; bump it whenever viewer/engine JS changes (worker.js inherits this version). -->
-<script src="../src/vnb.js?v=218"></script>
-<script src="../src/ev-recalc.js?v=218"></script>
-<script src="../src/rbc-surplus.js?v=218"></script>
-<script src="../src/reinsurance.js?v=218"></script>
-<script src="../src/frontier.js?v=218"></script>
-<script src="app.js?v=218"></script>
+<script src="../src/vnb.js?v=219"></script>
+<script src="../src/ev-recalc.js?v=219"></script>
+<script src="../src/rbc-surplus.js?v=219"></script>
+<script src="../src/reinsurance.js?v=219"></script>
+<script src="../src/frontier.js?v=219"></script>
+<script src="app.js?v=219"></script>
 </body>
 </html>

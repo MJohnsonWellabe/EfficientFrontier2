@@ -7,9 +7,9 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   nScen:100,nStoch:100,seed:null,lastRunSeed:null,slowMode:false,_wakeLock:null,_running:false,
   cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150,rbcTailX:3.5,rbcTailY:.25},
   surplusNote:{on:true,amount:150,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
-  // Reinsurance — MS quota share, OFF by default. Mirrors runner/defaults.js + the Reinsurance tab inputs.
-  reinsurance:{on:false,lagYears:1,
-    cede:{'<2026':0.25,'2026':0.25,'2027':0.25,'2028':0.25,'2029':0.25,'2030':0.25,'2031':0.25,'2032':0.25,'2033':0.25,'2034':0.25,'2035':0.25},
+  // Reinsurance — MS quota share, ON by default at 10%/yr. Mirrors runner/defaults.js + the Config-tab Reinsurance section.
+  reinsurance:{on:true,lagYears:1,
+    cede:{'<2026':0.10,'2026':0.10,'2027':0.10,'2028':0.10,'2029':0.10,'2030':0.10,'2031':0.10,'2032':0.10,'2033':0.10,'2034':0.10,'2035':0.10},
     commUpfront:{2026:10,2027:5,2028:5},
     commTable:[[0,0.75,250],[0.75,0.85,200],[0.85,0.95,150],[0.95,Infinity,100]]},
   sel:{scen:'base',sens:'det'},
@@ -353,7 +353,7 @@ function mainThreadCallbacks(fill,st,label,sig,resume,n){
 }
 function runSweepInWorker(fill,st,sig,resume,resumedFrom){
   return new Promise(function(resolve,reject){
-    var w=new Worker('worker.js?v=218');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
+    var w=new Worker('worker.js?v=219');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
     var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,reinsurance:S.reinsurance,
       seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
       claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
@@ -1383,7 +1383,7 @@ document.getElementById('runBtn').addEventListener('click',function(){readInputs
   });
 })();
 
-// Reinsurance tab — any input re-reads the treaty, recomputes the (reinsured) baseline,
+// Reinsurance (Config tab, under the surplus note) — any input re-reads the treaty, recomputes the (reinsured) baseline,
 // refreshes the constraint summary and the treaty-impact preview.
 (function(){
   function apply(){readReinsurance();computeBaseline();updateConsSummary();refreshReinsuranceUI();}

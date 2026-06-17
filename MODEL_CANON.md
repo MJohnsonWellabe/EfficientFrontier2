@@ -88,6 +88,12 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
 - **Surplus note:** default **ON**, **$150M**, 10-yr tenor, 9% interest (quarterly coupon), 3% upfront fee, 4% investment income on proceeds, 2026-06-30 start.
   Because the note flows through TAC, the viewer's **displayed** baseline RBC is note-adjusted (above the
   §1 figures). **§1 RBC remains the no-note engine anchor** verified by `node runner/validate.js`.
+- **Reinsurance (MS quota share):** default **ON**, **10% cede every issue year**, 1-year cession lag,
+  10-5-5 ($M) upfront ceding commission, sliding-scale ongoing commission (250/200/150/100 $/policy/yr
+  by MS loss-ratio band). Controls live on the **Configuration tab, under the surplus note**. Like the
+  note, the cession is applied once in `computeBaseline` and the frontier scenarios scale off the
+  reinsured baseline. **§1 RBC remains the no-treaty engine anchor** (`validate.js` is treaty-independent);
+  the reins-ON numbers are tied out separately — see §10.
 
 ---
 
@@ -170,3 +176,31 @@ The notes below document the *original* programmatic migration (`tools/per_year_
 - **Why it factors cleanly:** the online per-year multiplier `exp(z_sys·σ_sys + z_proc[y]·σ_proc − ½(σ_sys²+σ_proc²))` equals `systematic × process[y]` exactly (verified to machine precision in `export-scalars.js`). Claims/term apply by experience year uniformly across cohorts; only NIER carries the cohort split.
 - **Flat-equivalence invariant:** with identity defaults (1 / 1 / 0) every `INDEX/MATCH` returns the identity, so the recalc reproduces the baseline byte-for-byte — the workbook's existing RBC chain (required-capital charges scaled by recalc-vs-baseline LivesInForce, **C2 by IncClaims**; TAC = baseline + VNB-side Δ + EV-side Δ; surplus-note row 54) is untouched. Verified: claims/lapse cells bit-identical pre/post (pycel `cycles=False`); all 32,673 rewrites are exactly the documented token swap; JS §1 gate still green.
 - **NIER note (supersedes the old `Scalars!B30` "online-only"):** the cohort split IS now in Excel via the VNB(new)/EV(back-book) tab separation.
+
+---
+
+## 10. Reinsurance tie-out — BlockbusterDeals (Excel-grade)
+
+There is **no reinsurance tie in this repo's workbook** (`EffFrontierEngine_V2Slim_Final.xlsx` has no
+treaty sheets), and **no second reinsurance workbook to merge**. The reinsurance source of truth is the
+sibling **BlockbusterDeals** model (`src/engine.py`, Python), which `src/reinsurance.js` was ported from
+and which **itself ties out to its source workbook** `MS_Reins_Projection_04302026Slim.xlsx`
+(`BlockbusterDeals/runner/validate.py` PASSES). So the reins-ON numbers are validated **transitively**:
+EfficientFrontier2 → BlockbusterDeals → Excel.
+
+**Gate:** `node runner/reins-tieout.js` (exit 0 = anchor tied). It runs the EF2 engine on
+BlockbusterDeals' **validation deal** — 10% quota-share on issue years ≤2030, 1-yr lag, 10-5-5 ($M)
+upfront, **flat $200/policy/yr** ongoing (single band, to neutralize the ongoing-commission loss-ratio
+basis difference), **surplus note OFF** (the no-note RBC basis shared with §1 and BBD Surplus Calc/Recalc).
+
+| Check | Result |
+|---|---|
+| **Predeal RBC 2025–2034** (no treaty) vs BBD Surplus Calc | **Ties to 3 decimals, all 10 years** — confirms the base RBC engine is identical (BBD predeal ≡ §1: `5.674/5.148/4.351/4.273/4.723` = `5.67/5.15/4.35/4.27/4.72`). |
+| **Net RBC 2026–2030** (10% treaty) vs BBD Surplus Recalc — **ANCHOR** | **Tied** within BBD's 0.08 tolerance (max diff 0.065 @2030). This is the model's decision window (frontier constraints gate on min RBC 2026–2030). |
+| Upfront ceding commissions (10-5-5) | **Exact.** |
+| Retained-share ratios @10% cede | ~0.91 lives/claims in the ceded steady state (correct 10% cession with the 1-yr lag deferring the just-issued cohort). |
+| Net RBC 2031–2034 (run-off **tail**, informational) | EF2 drifts above BBD (+0.12 → +0.18). **Reconciled, not a defect:** predeal ties exactly all years, so the tail gap is treaty-interaction in run-off — the two models' MS-EV-book run-off and reins-TAC accumulation differ **past the 2030 planning horizon** (the EV-format difference: BBD slim aggregate vs EF2 MS-as-product). Outside the decision window; not gated. |
+
+**Bottom line:** the reinsurance treaty reproduces the Excel-validated economics over the years the model
+actually uses for decisions; the only divergence is in the post-horizon run-off tail and is fully explained.
+Re-run this gate after any edit to `src/reinsurance.js` or the cession logic in `frontier.js`.
