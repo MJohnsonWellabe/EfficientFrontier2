@@ -4,7 +4,7 @@
    the SAME engine modules as the viewer and calls the SAME src/frontier.js runSweep, so results
    are bit-identical to a main-thread run for a given seed. */
 var _v = self.location.search || '';   // carry the ?v=… cache-bust token from new Worker('worker.js?v=…')
-importScripts('../src/vnb.js' + _v, '../src/ev-recalc.js' + _v, '../src/rbc-surplus.js' + _v, '../src/frontier.js' + _v);
+importScripts('../src/vnb.js' + _v, '../src/ev-recalc.js' + _v, '../src/rbc-surplus.js' + _v, '../src/reinsurance.js' + _v, '../src/frontier.js' + _v);
 
 // Rebuild the engine state from the posted texts + config (mirrors the viewer's init + readInputs
 // and the runner's buildState — the engine reads these fields off S).

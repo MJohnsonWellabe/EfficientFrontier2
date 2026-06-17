@@ -7,6 +7,11 @@ var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart
   nScen:100,nStoch:100,seed:null,lastRunSeed:null,slowMode:false,_wakeLock:null,_running:false,
   cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150,rbcTailX:3.5,rbcTailY:.25},
   surplusNote:{on:true,amount:150,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
+  // Reinsurance — MS quota share, OFF by default. Mirrors runner/defaults.js + the Reinsurance tab inputs.
+  reinsurance:{on:false,lagYears:1,
+    cede:{'<2026':0.25,'2026':0.25,'2027':0.25,'2028':0.25,'2029':0.25,'2030':0.25,'2031':0.25,'2032':0.25,'2033':0.25,'2034':0.25,'2035':0.25},
+    commUpfront:{2026:10,2027:5,2028:5},
+    commTable:[[0,0.75,250],[0.75,0.85,200],[0.85,0.95,150],[0.95,Infinity,100]]},
   sel:{scen:'base',sens:'det'},
   cmp:{a:'base',b:'base'},
   results:[],years:[],vnbProd:'MS',vnbBasis:'orig',rbcBasis:'orig'};
@@ -224,7 +229,9 @@ async function init(){
   refreshOrigSalesUI();
   refreshGrowthUI();
   readSurplusNote();
+  readReinsurance();
   computeBaseline();updateConsSummary();
+  refreshReinsuranceUI();   // populate the treaty impact table once the baseline exists
   document.getElementById('hdrMeta').textContent='Wellabe · '+S.ev.rows.length+' EV rows · base 2025';
 }
 
@@ -254,7 +261,7 @@ function releaseWakeLock(){ if(S._wakeLock){try{S._wakeLock.release();}catch(e){
 // Signature of everything that determines the run's results (must be read AFTER readInputs()).
 function runSignature(){
   return JSON.stringify({seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
-    bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,
+    bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,reinsurance:S.reinsurance,
     claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
     procCorr:S.procCorr,nierSD:S.nierSD,nierProcSD:S.nierProcSD,origSales:S.origSales,years:S.years});
 }
@@ -346,8 +353,8 @@ function mainThreadCallbacks(fill,st,label,sig,resume,n){
 }
 function runSweepInWorker(fill,st,sig,resume,resumedFrom){
   return new Promise(function(resolve,reject){
-    var w=new Worker('worker.js?v=217');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
-    var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,
+    var w=new Worker('worker.js?v=218');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
+    var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growth:S.growth,surplusNote:S.surplusNote,reinsurance:S.reinsurance,
       seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
       claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
       procCorr:S.procCorr,nierSD:S.nierSD,nierProcSD:S.nierProcSD,origSales:S.origSales,years:S.years};
@@ -463,6 +470,44 @@ function refreshSurplusNoteUI(){
   }
 }
 
+/* ---- reinsurance (MS quota share) ---- */
+var RI_IYS=['<2026','2026','2027','2028','2029','2030','2031','2032','2033','2034','2035'];
+function riId(iy){return iy==='<2026'?'ri_cede_lt2026':'ri_cede_'+iy;}
+function readReinsurance(){
+  function g(id){var el=document.getElementById(id);return el?(+el.value||0):0;}
+  var on=(document.getElementById('ri_on')||{}).checked||false;
+  var cede={};RI_IYS.forEach(function(iy){cede[iy]=g(riId(iy))/100;});
+  S.reinsurance={
+    on:on,
+    lagYears:Math.round(g('ri_lag')),
+    cede:cede,
+    commUpfront:{2026:g('ri_cf_2026'),2027:g('ri_cf_2027'),2028:g('ri_cf_2028')},
+    commTable:[[0,0.75,g('ri_cco_0')],[0.75,0.85,g('ri_cco_1')],[0.85,0.95,g('ri_cco_2')],[0.95,Infinity,g('ri_cco_3')]]
+  };
+  refreshReinsuranceUI();
+}
+function refreshReinsuranceUI(){
+  var ri=S.reinsurance;
+  var fields=document.getElementById('ri_fields');
+  if(fields){fields.style.opacity=ri.on?'1':'0.5';fields.style.pointerEvents=ri.on?'auto':'none';}
+  var prev=document.getElementById('ri_preview');
+  if(prev)prev.style.display=ri.on?'block':'none';
+  if(ri.on&&S.baseline&&S.baseline.reins){
+    // Headline deterministic impact: MS VNB and minimum 2026-30 RBC ratio, treaty vs no-treaty.
+    var b=S.baseline,r=b.reins;
+    var commPV=EFENG.npv(S.params.assum.disc,(function(){var a=[];for(var y=2026;y<=2055;y++)a.push(r.commAT[y]||0);return a;})());
+    var msNPV=b.vnbs.MS.r.npvDE, minRBC=b.minRBC;
+    var rows=[
+      ['MS value of new business (NPV DE, $M)',fmt(msNPV,1)],
+      ['Ceding commissions (PV after-tax, $M)',fmt(commPV,1)],
+      ['Portfolio NPV DE ($M)',fmt(b.portNPV,1)],
+      ['Min RBC ratio 2026–30 (treaty)',fmt(minRBC,3)+'×']
+    ];
+    var h='<tbody>'+rows.map(function(x){return'<tr><td style="padding:3px 10px 3px 0">'+x[0]+'</td><td style="font-family:var(--mono);text-align:right">'+x[1]+'</td></tr>';}).join('')+'</tbody>';
+    var tbl=document.getElementById('ri_impactTbl');if(tbl)tbl.innerHTML=h;
+  }
+}
+
 /* ---- readInputs ---- */
 function readInputs(){
   function g(id){return+(document.getElementById(id)||{value:0}).value||0;}
@@ -473,6 +518,7 @@ function readInputs(){
   S.cons={rbcFloor:g('c_rbc'),tacChgFloor:g('c_tacchg')/100,irr3on:(document.getElementById('c_irr3on')||{}).checked,irrA:g('c_irra')/100,irrB:g('c_irrb')/100,deYr:Math.round(g('c_deyr')),cumDeYr:Math.round(g('c_cumdeyr')),cumDEFloor:g('c_cumfloor'),de1Floor:g('c_de1floor'),rbcTailX:g('c_rbctailx')/100,rbcTailY:g('c_rbctaily')/100};
   S.slowMode=(document.getElementById('runModeSlow')||{}).checked||false;   // Slow mode adds the per-draw trough-RBC tail constraint
   readSurplusNote();
+  readReinsurance();
   PRODS.forEach(function(c){S.claimsSD[c]=+(document.getElementById('cs_'+c)||{value:4}).value/100||0;S.claimsProcSD[c]=+(document.getElementById('cs_proc_'+c)||{value:3}).value/100||0;S.lapseSD[c]=+(document.getElementById('ls_'+c)||{value:6.5}).value/100||0;S.lapseProcSD[c]=+(document.getElementById('ls_proc_'+c)||{value:3}).value/100||0;S.procCorr[c]=Math.max(0,Math.min(0.95,+(document.getElementById('rho_'+c)||{value:0}).value||0));});
   // Preneed-only NIER (investment-yield) shock σ, entered in basis points -> rate units. PN claims σ above IS the mortality σ (drives the coupled claims+decrement shock); PN lapse σ / ρ are unused.
   S.nierSD.PN=Math.max(0,+(document.getElementById('ni_PN')||{value:35}).value)/10000||0;S.nierProcSD.PN=Math.max(0,+(document.getElementById('ni_proc_PN')||{value:15}).value)/10000||0;
@@ -1335,6 +1381,18 @@ document.getElementById('runBtn').addEventListener('click',function(){readInputs
     var el=document.getElementById(id);
     if(el)el.addEventListener('change',function(){readSurplusNote();computeBaseline();updateConsSummary();});
   });
+})();
+
+// Reinsurance tab — any input re-reads the treaty, recomputes the (reinsured) baseline,
+// refreshes the constraint summary and the treaty-impact preview.
+(function(){
+  function apply(){readReinsurance();computeBaseline();updateConsSummary();refreshReinsuranceUI();}
+  var ids=['ri_on','ri_lag','ri_cf_2026','ri_cf_2027','ri_cf_2028','ri_cco_0','ri_cco_1','ri_cco_2','ri_cco_3']
+    .concat(RI_IYS.map(riId));
+  ids.forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',apply);});
+  // "Set all cede % to" master input fills every per-issue-year cede box, then applies.
+  var allEl=document.getElementById('ri_cede_all');
+  if(allEl)allEl.addEventListener('change',function(){var v=allEl.value;RI_IYS.forEach(function(iy){var e=document.getElementById(riId(iy));if(e)e.value=v;});apply();});
 })();
 
 

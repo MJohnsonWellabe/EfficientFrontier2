@@ -83,5 +83,26 @@ hash** of the password (plaintext is never committed). To change the password, r
 and update the `EXPECTED`/guard hash in **both** `index.html` and `viewer/index.html`. Real protection
 would require private Pages (Enterprise) or an authenticated host.
 
+## Reinsurance (MS quota share — opt-in toggle, OFF by default)
+A Medicare-Supplement-only quota-share treaty, modeled like the surplus note: a toggle plus config
+mirrored in three places (`viewer/index.html` Reinsurance tab inputs, `viewer/app.js` `S.reinsurance`
+init, `runner/defaults.js`), passed to the worker in `runFrontier`'s `cfg`, and re-read by
+`readReinsurance()`. Engine lives in **`src/reinsurance.js`** (`buildRetainedEV`, `retainedRatios`,
+`scaleMSCharges`, `cedingCommissions`, `lookupCco`, `reinsCedeRate`). Default is **OFF** — when off,
+nothing runs and every result (incl. `runner/validate.js` §1 and the full frontier) is byte-identical.
+- **Compute once, scale off the baseline.** Reinsurance is applied **only** in
+  `frontier.js → computeBaseline`: a proportional "retained EV" (every MS row × `(1−cede)` with a
+  1-year cession lag), MS RBC charges scaled by retained share (lives → premium-related TSCs, claims
+  → TSC2; TSC4a/4b untouched), ceding commissions (upfront schedule + sliding-scale by loss ratio),
+  and a per-year after-tax surplus flow (`applyReinsToSurplus`, sibling of `applyNoteToSurplus`). The
+  frontier scenarios (`buildScen`) **inherit** the treaty by recalc-ing off the retained EV
+  (`S.evRetained`) and scaling off the reinsured `S.baseline.surplusCalc` — the cession is **never**
+  re-applied per scenario, and the baseline treaty cash flows are carried via `S.baselineReins`.
+- **MS only.** PN and HI cohorts and all non-MS logic are never ceded. EV rows are keyed by product
+  CODE (`'MS'`); `surplusCalc` charges by full NAME (`'Medicare Supplement'`) — `reinsurance.js`
+  keeps both (`MS_CODE` / `MS_NAME`).
+- The lag's step-changes fall in `recalcEV`'s build (proportional/additive) regime, so scaling MS
+  lives in the retained EV does **not** distort the persistency roll-forward (verified).
+
 ## Open item
 Per-product stochastic σ for claims and lapse are currently assumed. They are being re-derived from seriatim aggregate A/E ratios (process vs. systematic risk). See `MODEL_CANON.md §6`.
