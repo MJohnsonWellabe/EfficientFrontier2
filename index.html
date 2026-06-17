@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Efficient Frontier — Capital Deployment Engine</title>
+<!-- Password landing gate for the GitHub Pages site. NOTE: this is a STATIC site with no backend,
+     so this check is client-side obfuscation only (the page source and data/ files are reachable by
+     a determined visitor) — it deters casual access, it is not real security.
+     EXPECTED is SHA-256 of the password; keep it identical to the guard in viewer/index.html.
+     To change the password: recompute SHA-256 of the new password and update both spots. -->
+<style>
+:root{--ink:#0d1b26;--card:#ffffff;--line:#dce4eb;--muted:#5c6c79;--teal:#0a7080;--teald:#075e6d;--red:#b53323}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:linear-gradient(135deg,#0d2434,#0d3340);color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;padding:24px}
+.gate{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:30px 28px;width:100%;max-width:360px;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.gate h1{font-size:16px;font-weight:650;color:var(--ink);margin-bottom:4px}
+.gate h1 em{color:var(--teal);font-style:normal}
+.gate p{font-size:12px;color:var(--muted);margin-bottom:18px;line-height:1.5}
+.gate label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px}
+.gate input{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;width:100%;background:#fff;color:var(--ink)}
+.gate input:focus{outline:2px solid var(--teal);outline-offset:-1px}
+.gate button{margin-top:14px;width:100%;font-size:14px;font-weight:600;padding:11px;border:none;border-radius:6px;background:var(--teal);color:#fff;cursor:pointer}
+.gate button:hover{background:var(--teald)}
+.gate .err{min-height:16px;margin-top:10px;font-size:12px;color:var(--red);font-weight:600}
+</style>
+</head>
+<body>
+<form class="gate" id="gate" autocomplete="off">
+  <h1>The Efficient Frontier <em>/ Capital Deployment</em></h1>
+  <p>This model is access-restricted. Enter the password to continue.</p>
+  <label for="pw">Password</label>
+  <input type="password" id="pw" autocomplete="current-password" autofocus>
+  <button type="submit">Enter</button>
+  <div class="err" id="err" role="alert"></div>
+</form>
+<script>
+(function(){
+  'use strict';
+  var EXPECTED='dc7620ebfc35d54ef34e32b9eb6f69f1bfe93f294370c2798d91147e34e7ad56';
+  var DEST='viewer/index.html';                 // relative -> works at domain root or under a subpath
+  function toHex(buf){var b=new Uint8Array(buf),s='';for(var i=0;i<b.length;i++)s+=b[i].toString(16).padStart(2,'0');return s;}
+  function sha256(text){return crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)).then(toHex);}
+  function unlock(){
+    try{sessionStorage.setItem('ef_auth',EXPECTED);}catch(e){}
+    location.replace(DEST);
+  }
+  function bindAll(){
+    var form=document.getElementById('gate'),pw=document.getElementById('pw'),err=document.getElementById('err');
+    form.addEventListener('submit',function(e){
+      e.preventDefault();
+      err.textContent='';
+      sha256(pw.value).then(function(h){
+        if(h===EXPECTED){unlock();}
+        else{err.textContent='Incorrect password.';pw.value='';pw.focus();}
+      }).catch(function(){err.textContent='This browser blocked the check (needs https or localhost).';});
+    });
+  }
+  document.addEventListener('DOMContentLoaded',function(){
+    // Already unlocked this session? Skip straight to the app.
+    try{if(sessionStorage.getItem('ef_auth')===EXPECTED){location.replace(DEST);return;}}catch(e){}
+    bindAll();
+  });
+})();
+</script>
+</body>
+</html>

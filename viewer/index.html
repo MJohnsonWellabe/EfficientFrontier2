@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Efficient Frontier — Capital Deployment</title>
+<!-- Password guard: runs before anything else. If this browser session hasn't unlocked via the
+     landing page (../index.html), bounce back to it. Client-side obfuscation only (static site).
+     EXPECTED is SHA-256 of the password; keep it identical to the hash in /index.html. -->
+<script>(function(){var E='dc7620ebfc35d54ef34e32b9eb6f69f1bfe93f294370c2798d91147e34e7ad56';try{if(sessionStorage.getItem('ef_auth')!==E){location.replace('../index.html');}}catch(e){location.replace('../index.html');}})();</script>
+<style>
+:root{--ink:#0d1b26;--ink2:#1a2e3e;--paper:#f9fafc;--card:#ffffff;--line:#dce4eb;--muted:#5c6c79;--faint:#8d9faa;--teal:#0a7080;--teald:#075e6d;--teallt:#e4f3f5;--amber:#b57009;--amberlt:#fdf3e0;--green:#1a6e45;--greenlt:#e4f2eb;--red:#b53323;--redlt:#fce8e5;--navy:#0d1b26;--mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;--sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}html,body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:13.5px;line-height:1.5}
+header{background:var(--ink);color:#d8e8ed;border-bottom:3px solid var(--teal);position:sticky;top:0;z-index:30}
+header .hw{display:flex;align-items:baseline;justify-content:space-between;padding:13px 24px}
+header h1{font-size:16px;font-weight:650}header h1 em{color:#7baab3;font-style:normal;font-weight:400}
+header .hm{font-family:var(--mono);font-size:11px;color:#7baab3}
+nav{background:var(--ink2);border-bottom:1px solid #263c50;position:sticky;top:47px;z-index:29}
+#nav{display:flex;gap:1px;overflow-x:auto;padding:0 16px}
+#nav button{background:none;border:none;border-bottom:2.5px solid transparent;color:#8fa9b6;font-family:var(--sans);font-size:13px;padding:10px 14px;cursor:pointer;white-space:nowrap}
+#nav button:hover{color:#fff}#nav button.active{color:#fff;border-bottom-color:var(--teal);background:rgba(10,112,128,.14)}
+main{padding:22px 24px 80px;max-width:1440px;margin:0 auto;overflow-x:hidden}.card{max-width:100%}
+.tab{display:none}.tab.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:18px 20px;margin-bottom:16px}
+h2.sh{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:650;display:flex;align-items:center;gap:10px;margin-bottom:14px}
+h2.sh::after{content:"";flex:1;height:1px;background:var(--line)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:960px){.g2,.g3,.g4{grid-template-columns:1fr 1fr}}@media(max-width:640px){.g2,.g3,.g4{grid-template-columns:1fr}}
+label.f{display:block;margin-bottom:10px}label.f .lb{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+input[type=number],input[type=text],select{font-family:var(--mono);font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;width:100%;background:#fff;color:var(--ink)}
+input[type=number]:focus,select:focus{outline:2px solid var(--teal);outline-offset:-1px}
+input[type=checkbox],input[type=radio]{width:auto;margin-right:5px;accent-color:var(--teal)}
+.btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 18px;border-radius:6px;border:none;background:var(--teal);color:#fff;cursor:pointer}.btn:hover{background:var(--teald)}.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:#fff;border:1px solid var(--teal);color:var(--teal)}.btn.ghost:hover{background:var(--teallt)}.btn.sm{padding:5px 10px;font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{background:#fff;border:none;border-right:1px solid var(--line);color:var(--muted);cursor:pointer;font-family:var(--sans);font-size:12px;padding:6px 13px}
+.seg button:last-child{border-right:none}.seg button.active{background:var(--ink2);color:#fff}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:5px 9px;border-bottom:1px solid var(--line);text-align:right;font-size:12px}
+th:first-child,td:first-child{text-align:left}
+thead th{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;border-bottom:2px solid var(--ink)}
+td{font-family:var(--mono)}td:first-child{font-family:var(--sans)}
+tr.rule td{border-top:2px solid var(--ink);font-weight:700}tr.sub td{background:#f5f8fa;font-weight:600}
+tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-weight:600;font-size:11px;text-transform:uppercase}
+.chip{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10.5px;font-family:var(--mono);font-weight:600;white-space:nowrap}
+.chip.ok{background:var(--greenlt);color:var(--green)}.chip.bad{background:var(--redlt);color:var(--red)}.chip.fr{background:var(--teallt);color:var(--teal)}
+/* Frontier V3-style layout */
+.fr-layout{display:grid;grid-template-columns:1fr 220px;gap:14px;margin-bottom:14px}
+@media(max-width:900px){.fr-layout{grid-template-columns:1fr}}
+.chart-wrap{position:relative;height:480px}
+.ctrl-card{background:#f5f8fa;border:1px solid var(--line);border-radius:8px;padding:14px}
+.ctrl-grp{margin-bottom:16px}.ctrl-grp:last-child{margin-bottom:0}
+.ctrl-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;display:block;margin-bottom:6px}
+.ck-item{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:4px}
+.axis-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.axis-label{font-size:10.5px;color:var(--muted);margin-bottom:3px}
+.axis-input{font-family:var(--mono);font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;width:100%;background:#fff}
+/* Stats strip */
+.stats-strip{display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px 0;background:linear-gradient(135deg,#0d2434,#0d3340);border-radius:10px;padding:18px 24px;margin-bottom:16px}
+.stat-box{min-width:104px;padding:0 26px}.stat-box:first-child{padding-left:0}.stat-box:not(:first-child){border-left:1px solid rgba(123,170,179,.22)}.stat-lbl{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#7baab3;margin-bottom:4px}.stat-val{font-family:var(--mono);font-size:20px;font-weight:700;color:#fff;line-height:1.2}.stat-sub{display:block;font-size:10.5px;color:#9fc6cc;margin-top:3px}
+/* Scenario table */
+.scen-tbl th{font-size:10.5px;padding:5px 8px}.scen-tbl td{font-size:11.5px;padding:4px 8px}
+.fr-row td{background:#f0fbfc!important;font-weight:600}
+.fr-row td:first-child::after{content:" ●";color:var(--teal);font-size:9px}
+/* Lock table headers while scrolling inside any .tbl-scroll box (Scenario Results, VNB, RBC) */
+.tbl-scroll thead th{position:sticky;top:0;z-index:2;background:var(--card);box-shadow:inset 0 -2px 0 var(--ink)}
+/* Separated borders so each sticky cell paints its own opaque box (collapsed borders bleed scrolled text through the locked column) */
+.hscroll table,.tbl-scroll table,.dbg-body table{border-collapse:separate;border-spacing:0}
+/* Lock the first (label) column in horizontally scrolling tables, across all tabs */
+.hscroll th:first-child,.hscroll td:first-child,.tbl-scroll th:first-child,.tbl-scroll td:first-child,.dbg-body th:first-child,.dbg-body td:first-child{position:sticky;left:0;z-index:1;background:var(--card);box-shadow:1px 0 0 var(--line)}
+.hscroll thead th:first-child,.tbl-scroll thead th:first-child,.dbg-body thead th:first-child{z-index:3}
+.hscroll tr.sub td:first-child,.tbl-scroll tr.sub td:first-child,.dbg-body tr.sub td:first-child{background:#f5f8fa}
+.hscroll tr.hsec td:first-child,.tbl-scroll tr.hsec td:first-child,.dbg-body tr.hsec td:first-child{background:var(--ink2)}
+.hscroll tr.inc-row td:first-child,.tbl-scroll tr.inc-row td:first-child,.dbg-body tr.inc-row td:first-child{background:#fffde7}
+.hscroll .atbl td:first-child,.tbl-scroll .atbl td:first-child,.dbg-body .atbl td:first-child{background:#f8fafc}
+.tbl-scroll tr.fr-row td:first-child{background:#f0fbfc}
+/* Pin section-title text to the left edge so wide-table section headers stay visible while scrolling horizontally */
+.pintitle{position:sticky;left:0;display:inline-block}
+.hint{font-size:11.5px;color:var(--muted);line-height:1.55}
+.pwrap{height:5px;background:#e4edf3;border-radius:3px;overflow:hidden;margin-top:10px;display:none}
+.pfill{height:100%;width:0;background:var(--teal);transition:width .08s}
+.src-tag{font-size:11px;color:var(--faint);font-family:var(--mono);margin-top:3px}
+.c4box{background:#f0f6f8;border:1px solid #c6dde2;border-radius:7px;padding:12px 14px;grid-column:1/-1}
+.atbl{font-size:11.5px;width:100%;border-collapse:collapse}
+.atbl th,.atbl td{padding:3px 5px;border:1px solid var(--line);text-align:right;white-space:nowrap}
+.atbl th:first-child,.atbl td:first-child{text-align:left;font-family:var(--sans);background:#f8fafc}
+.atbl thead th{background:#f0f4f7;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.atbl input[type=number]{width:72px;padding:2px 5px;font-size:11.5px;font-family:var(--mono);border:none;background:transparent;text-align:right;outline:none}
+.atbl input[type=number]:focus{background:#fff3cd;border-radius:3px}
+.paste-hint{font-size:11px;color:var(--teal);margin-top:4px}
+.dbg-sec{border:1px solid var(--line);border-radius:7px;margin-bottom:10px}
+.dbg-hdr{background:#f2f6f9;padding:10px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;user-select:none;border-radius:7px 7px 0 0}
+.dbg-hdr:hover{background:#e8f0f5}.dbg-body{padding:14px;display:none}.dbg-body.open{display:block;border-radius:0 0 7px 7px}.dbg-body table{min-width:max-content}
+.tbl-scroll{overflow:auto;max-height:500px}
+.hscroll{overflow-x:auto;overflow-y:visible;max-width:100%;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+.hscroll table{min-width:max-content;width:auto}
+.doc-p{font-size:13px;line-height:1.7;margin-bottom:14px;color:#2a3c4a}
+.doc-li{margin:4px 0 4px 18px;font-size:13px;line-height:1.65;color:#2a3c4a;list-style:disc}
+.doc-li::marker{color:var(--teal)}
+.vnb-stat{background:var(--ink2);border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:2px}
+.vnb-stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#7baab3}
+.vnb-stat .v{font-family:var(--mono);font-size:19px;font-weight:700;color:#fff}
+.inc-row td{background:#fffde7}
+.reco-banner{display:none;background:#fff;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:8px;padding:14px 18px;margin-bottom:16px}
+.reco-banner.empty{border-left-color:var(--amber);background:var(--amberlt)}
+.reco-banner .rb-eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--teal);font-weight:700;margin-bottom:6px}
+.reco-banner.empty .rb-eyebrow{color:var(--amber)}
+.reco-banner .rb-mix{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--ink);line-height:1.3}
+.reco-banner .rb-metrics{display:flex;flex-wrap:wrap;gap:18px;margin-top:8px}
+.reco-banner .rb-metric .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.reco-banner .rb-metric .v{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--ink2)}
+.reco-banner .rb-note{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5}
+.g2>div,.g3>div,.g4>div{min-width:0}
+.doc-acc{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;background:var(--card);overflow:hidden}
+.doc-acc>summary{cursor:pointer;list-style:none;padding:13px 18px;font-size:14px;font-weight:650;color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.doc-acc>summary::-webkit-details-marker{display:none}
+.doc-acc>summary::after{content:'+';color:var(--teal);font-size:18px;font-weight:400;line-height:1}
+.doc-acc[open]>summary::after{content:'−'}
+.doc-acc>summary:hover{background:#f5f8fa}
+.doc-acc[open]>summary{border-bottom:1px solid var(--line)}
+.doc-acc-bd{padding:14px 18px 4px}
+#tab-docs>h2.sh{margin-top:22px}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+#nav button:focus-visible{outline:2px solid #7baab3;outline-offset:-2px}
+#nav button.secondary{color:#5b7180}
+</style>
+</head>
+<body>
+<header><div class="hw"><h1>The Efficient Frontier <em>/ Capital Deployment Engine</em></h1><span class="hm" id="hdrMeta">loading…</span></div></header>
+<nav><div id="nav">
+  <button data-tab="config" class="active">Configuration</button>
+  <button data-tab="frontier">Efficient Frontier</button>
+  <button data-tab="compare" title="Compare all metrics for two scenarios side by side">Compare</button>
+  <button data-tab="vnb" title="Value of New Business — projected value created by 2026 sales, by product">VNB by Product</button>
+  <button data-tab="rbc" title="Risk-Based Capital and surplus — capital adequacy under each scenario">RBC &amp; Surplus</button>
+  <button data-tab="evidence" title="Why each scenario passes or fails the investment constraints">Constraint Evidence</button>
+  <button data-tab="debug" class="secondary" title="Engine internals and intermediate calculations for validation">Debug</button>
+  <button data-tab="docs">Methodology</button>
+</div></nav>
+<main>
+
+<!-- ===== CONFIG ===== -->
+<section class="tab active" id="tab-config">
+
+<div class="card">
+  <h2 class="sh">1 — Input Data</h2>
+  <div class="g3">
+    <div>
+      <div class="lb" style="font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">EV Projection</div>
+      <input type="file" id="fEV" accept=".csv" style="margin-bottom:4px">
+      <div class="src-tag" id="srcEV"></div>
+      <button class="btn ghost sm" style="margin-top:6px" onclick="downloadEVTemplate()">↓ Download template</button>
+    </div>
+    <div>
+      <div class="lb" style="font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">TS Charges</div>
+      <input type="file" id="fTS" accept=".csv" style="margin-bottom:4px">
+      <div class="src-tag" id="srcTS"></div>
+      <button class="btn ghost sm" style="margin-top:6px" onclick="downloadTSTemplate()">↓ Download template</button>
+    </div>
+    <div>
+      <div class="lb" style="font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Statutory Surplus</div>
+      <input type="file" id="fSurp" accept=".csv" style="margin-bottom:4px">
+      <div class="src-tag" id="srcSurp"></div>
+      <button class="btn ghost sm" style="margin-top:6px" onclick="downloadSurplusTemplate()">↓ Download template</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="sh">2 — Economic Assumptions</h2>
+  <p class="hint" style="margin-bottom:12px">You can paste directly from Excel into any table below (select the data range in Excel, copy, click the first input cell here, and paste). The 2030 column value applies to all projection years beyond 2030; acquisition and maintenance expenses are inflated at the specified rate after the inflation start year.</p>
+  <div class="g2">
+    <div>
+      <div class="hint" style="margin-bottom:6px;font-weight:600">NIER (annual %) — net investment earned rate (new business)</div>
+      <div class="hscroll"><table class="atbl" id="nierTbl"></table></div>
+      <div style="margin-top:14px"><div class="hint" style="margin-bottom:6px;font-weight:600">PN EV NIER (annual %) — earned rate on the Preneed back book (pre-2026 in-force)</div><div class="hscroll"><table class="atbl" id="nierEvTbl"></table></div></div>
+      <div style="margin-top:14px"><div class="hint" style="margin-bottom:6px;font-weight:600">Acquisition expense ($ / life issued)</div><div class="hscroll"><table class="atbl" id="acqTbl"></table></div></div>
+      <div style="margin-top:14px"><div class="hint" style="margin-bottom:6px;font-weight:600">Maintenance expense ($ / policy / year) — inflated after start year</div><div class="hscroll"><table class="atbl" id="maintTbl"></table></div></div>
+    </div>
+    <div>
+      <div class="g2" style="margin-bottom:14px">
+        <label class="f"><span class="lb">Tax rate</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="a_tax" value="21" step="0.1"><span>%</span></div></label>
+        <label class="f"><span class="lb">Discount rate</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="a_disc" value="8" step="0.25"><span>%</span></div></label>
+        <label class="f"><span class="lb">Expense inflation</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="a_infl" value="3" step="0.1"><span>%</span></div></label>
+        <label class="f"><span class="lb">Inflation start year</span><input type="number" id="a_inflyr" value="2031" step="1"></label>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:16px;padding:12px 14px;background:#f5f8fa;border-radius:7px">
+    <div class="hint" style="margin-bottom:10px;font-weight:600">Original sales anchor ($M/yr) — 2026–2035</div>
+    <div class="hscroll"><table class="atbl" id="origSalesTbl"></table></div>
+    <div id="growthSection" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+      <div class="hint" style="margin-bottom:6px;font-weight:600">Annual sales growth (%/yr) — 2027–2035 <span style="font-weight:400;color:var(--muted)">· compounded off the 2026 anchor; applied to efficient-frontier scenario draws only, never the baseline</span></div>
+      <div class="hscroll"><table class="atbl" id="growthTbl"></table></div>
+      <div id="growthFill" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="sh">3 — Sales, Hurdle Rates &amp; Stochastic Parameters</h2>
+  <div class="g2">
+    <div>
+      <div class="hint" style="margin-bottom:10px">Sales scenario range ($M/yr) — LHS samples within these bounds</div>
+      <label class="f"><span class="lb">Medicare Supplement — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_MS_lo" value="250" step="10"><input type="number" id="b_MS_hi" value="350" step="10"></div></label>
+      <label class="f"><span class="lb">Preneed — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_PN_lo" value="200" step="10"><input type="number" id="b_PN_hi" value="240" step="10"></div></label>
+      <label class="f"><span class="lb">Hospital Indemnity — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_HI_lo" value="18" step="1"><input type="number" id="b_HI_hi" value="25" step="1"></div></label>
+    </div>
+    <div>
+      <div class="hint" style="margin-bottom:10px">IRR hurdle rates by product (Constraint 3 weighted target)</div>
+      <label class="f"><span class="lb">Medicare Supplement</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="h_MS" value="12" step="0.5"><span>%</span></div></label>
+      <label class="f"><span class="lb">Preneed</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="h_PN" value="10" step="0.5"><span>%</span></div></label>
+      <label class="f"><span class="lb">Hospital Indemnity</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="h_HI" value="10" step="0.5"><span>%</span></div></label>
+    </div>
+  </div>
+  <div style="margin-top:18px">
+      <div class="hint" style="margin-bottom:8px">Stochastic σ (%) per product, split into <strong>systematic</strong> (a persistent assumption/pricing miss — one draw held across all 30 years) and <strong>process</strong> (random year-to-year fluctuation — redrawn each year, diversifies over time). Set process to 0 for a pure single-shock model. <strong>Preneed</strong> is pre-funded, so a death is at once a claim, a reserve release, and a decrement — its claims σ is a single <strong>mortality</strong> shock that drives claims, termination and reserve release together (netting to the net-amount-at-risk margin); PN's dominant risk is the separate NIER shock below. See the Risk Calibration sections in Methodology.</div>
+      <table style="font-size:12px;width:100%;border-collapse:collapse">
+        <thead><tr><th style="text-align:left;padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Product</th><th style="padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Claims /<br>mort. syst.</th><th style="padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Claims /<br>mort. proc.</th><th style="padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Term<br>syst.</th><th style="padding:3px 4px;font-size:9.5px;color:var(--muted);text-transform:uppercase">Term<br>proc.</th></tr></thead>
+        <tbody id="stochTbl"></tbody>
+      </table>
+      <div class="hint" style="margin:10px 0 4px"><strong>Preneed NIER shock σ (bps)</strong> — the dominant PN risk. An additive level shift on the net investment earned rate (the long-duration reserve's book yield), split systematic / process. Calibration: industry book yields move ~15 bps/yr and preneed pricing carries 20–50 bps interest margins — see Risk Calibration in Methodology.</div>
+      <table style="font-size:12px;width:100%;border-collapse:collapse"><tbody><tr><td style="padding:3px 6px 3px 0">NIER systematic (bps)</td><td style="padding:3px 8px 3px 0"><input type="number" id="ni_PN" value="35" step="5" min="0" style="width:56px;font-family:var(--mono);font-size:12px;padding:3px 4px;border:1px solid var(--line);border-radius:4px;text-align:right"></td><td style="padding:3px 6px 3px 16px">NIER process (bps)</td><td><input type="number" id="ni_proc_PN" value="15" step="5" min="0" style="width:56px;font-family:var(--mono);font-size:12px;padding:3px 4px;border:1px solid var(--line);border-radius:4px;text-align:right"></td></tr></tbody></table>
+      <div class="hint" style="margin:10px 0 4px">Process correlation ρ (claims ↔ termination), for the two-shock products — couples the random year-to-year draws so a high-claims year tends to be a high-termination year. Systematic shocks stay independent; 0 = independent. (Preneed is excluded: its claims and termination are one coupled mortality shock.)</div>
+      <table style="font-size:12px;width:100%;border-collapse:collapse"><tbody><tr><td style="padding:3px 6px 3px 0">Med Supp</td><td style="padding:3px 8px 3px 0"><input type="number" id="rho_MS" value="0.25" step="0.05" min="0" max="0.95" style="width:50px;font-family:var(--mono);font-size:12px;padding:3px 4px;border:1px solid var(--line);border-radius:4px;text-align:right"></td><td style="padding:3px 6px 3px 16px">Hosp Ind</td><td><input type="number" id="rho_HI" value="0.25" step="0.05" min="0" max="0.95" style="width:50px;font-family:var(--mono);font-size:12px;padding:3px 4px;border:1px solid var(--line);border-radius:4px;text-align:right"></td></tr></tbody></table>
+      <div style="margin-top:12px" class="g2">
+        <label class="f"><span class="lb">Scenarios (LHS)</span><input type="number" id="nScen" value="100" min="8" max="200"></label>
+        <label class="f"><span class="lb">Stochastic runs / scenario</span><input type="number" id="nStoch" value="100" min="50" max="200"></label>
+        <label class="f"><span class="lb">RNG seed</span><input type="number" id="seedInput" value="20260612" step="1"></label>
+        <label class="f"><span class="lb">&nbsp;</span><button type="button" class="btn" id="randSeedBtn" style="padding:8px 14px">🎲 Randomize seed</button></label>
+      </div>
+      <p class="hint" style="margin-top:-4px">Minimum 50 draws — the C4 IRR-tail probability is estimated from these draws, and fewer than ~50 gives a coarse, unstable tail estimate. 100 is recommended. <strong>RNG seed</strong> makes a run reproducible: the same seed always draws the same frontier (default <code>20260612</code>). Click <strong>Randomize</strong> for a fresh draw, or type a previous seed to revisit that exact run.</p>
+    </div>
+</div>
+
+<div class="card">
+  <h2 class="sh">4 — Constraints</h2>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+    <label class="f"><span class="lb">Constraint 1 — Min RBC ratio (2026–2030)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_rbc" value="4.0" step="0.1"><span>×</span></div><p class="hint" style="margin-top:4px">Required capital = post-covariance × 1.03. Reject if min RBC over 2026–2030 falls below this.</p></label>
+    <label class="f"><span class="lb">Constraint 2 — Min change in TAC / BOP TAC</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_tacchg" value="-12" step="0.5"><span>%</span></div><p class="hint" style="margin-top:4px">Year-over-year change in Total Adjusted Capital divided by beginning-of-period TAC. Reject if this falls below the floor in any year. (Replaces the former ATI/C&amp;S test and absorbs the old C7 TAC-decline limit.)</p></label>
+    <label class="f" style="background:#f5f8fa;border:1px solid var(--line);border-radius:7px;padding:12px"><span class="lb">Constraint 3 — 2026-issue IRR vs sales-weighted target</span><div style="margin:6px 0"><label><input type="checkbox" id="c_irr3on" checked>Enforce</label></div><p class="hint">Reject if the <strong>2026 issue-year</strong> IRR &lt; sales-weighted average of product hurdle rates (weighted by the 2026 sales mix). Pre-2026 in-force is excluded.</p></label>
+    <div class="c4box">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px"><strong>Constraint 4 — 2026-issue IRR tail risk:</strong> The probability that the <strong>2026 issue-year</strong> IRR falls below <em>a</em>% must be less than <em>b</em>%. Measured across stochastic runs per scenario. Pre-2026 in-force is excluded.</p>
+      <div class="g4">
+        <label class="f" style="margin:0"><span class="lb"><em>a</em> — IRR threshold</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_irra" value="8" step="0.5"><span>%</span></div></label>
+        <label class="f" style="margin:0"><span class="lb"><em>b</em> — max probability</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_irrb" value="15" step="1"><span>%</span></div></label>
+      </div>
+    </div>
+    <label class="f"><span class="lb">Constraint 5 — 2026-issue DE positive by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_deyr" value="4" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px">Distributable earnings from the <strong>2026 issue year only</strong> (all 3 products summed) must be positive in projection year N (year 4 = calendar year 2029). Pre-2026 in-force is excluded.</p></label>
+    <label class="f"><span class="lb">Constraint 6 — 2026-issue cumulative DE by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumdeyr" value="10" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px">Cumulative distributable earnings from the <strong>2026 issue year only</strong> (all 3 products summed) must turn positive by year N (year 10 = calendar year 2035). Pre-2026 in-force is excluded.</p></label>
+  </div>
+  <div style="margin-top:12px;padding:12px 14px;background:#f5f8fa;border:1px solid var(--line);border-radius:7px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 7 — CumDE floor (max negative 2026-issue cumulative DE)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumfloor" value="-180" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px"><strong>2026 issue-year</strong> cumulative DE (all 3 products) must not fall below this floor in any year. Pre-2026 in-force is excluded.</p></label>
+      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 8 — Year-1 DE floor (max negative 2026 first-year DE)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_de1floor" value="-150" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px">Caps first-year acquisition strain for the 2026 cohort (2026 issues only, all 3 products; pre-2026 in-force excluded). Baseline 2026 DE is about −$109M; the default −$150M leaves ~$41M of headroom so the base case clears and only materially more aggressive single-year mixes are gated. Its evidence panel is on the Constraint Evidence tab, and it appears in the What-if shadow prices.</p></label>
+      <div><button class="btn ghost sm" onclick="(function(){var d=document.getElementById('cumDE-baseline-tbl');d.style.display=d.style.display==='none'?'block':'none';})()">Show baseline CumDE</button>
+      <div id="cumDE-baseline-tbl" style="display:none;margin-top:8px;overflow:auto"><div id="cumDEBslTbl"></div></div></div>
+    </div>
+  </div>
+  <div class="c4box" style="margin-top:12px">
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px"><strong>Constraint 9 — Trough RBC tail risk (stochastic counterpart to C1):</strong> the probability that a scenario's <strong>trough RBC ratio</strong> (minimum over 2026–2030, full book, note-adjusted) falls below <em>x</em>% must be less than <em>y</em>%, measured across the stochastic draws. <strong>Evaluated only in Slow mode</strong> (it recomputes full RBC on every draw).</p>
+    <div class="g4">
+      <label class="f" style="margin:0"><span class="lb"><em>x</em> — min RBC ratio</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_rbctailx" value="350" step="10"><span>%</span></div></label>
+      <label class="f" style="margin:0"><span class="lb"><em>y</em> — max probability</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_rbctaily" value="25" step="1"><span>%</span></div></label>
+    </div>
+  </div>
+  <div style="margin-top:14px;padding:10px 14px;background:#f8fafc;border-radius:6px;font-size:12px;color:var(--muted)" id="consSummary"></div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:6px">
+    <h2 class="sh" style="margin:0">5 — Surplus Note</h2>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">
+      <input type="checkbox" id="sn_on" checked style="width:16px;height:16px"> Enabled
+    </label>
+  </div>
+  <p class="hint" style="margin-bottom:14px">A surplus note brings in capital at issue and earns investment income on the proceeds, then pays an upfront fee, quarterly interest (one quarter of the annual coupon every three months after issue), and repays principal at maturity. The <strong>net cash flow each year flows through TAC</strong> as an income change — increasing or decreasing total adjusted capital — and touches nothing else in the model.</p>
+  <div id="sn_fields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+    <label class="f" style="margin:0"><span class="lb">Amount ($M)</span><input type="number" id="sn_amount" value="150" step="5"></label>
+    <label class="f" style="margin:0"><span class="lb">Tenor (years)</span><input type="number" id="sn_tenor" value="10" step="1" min="1"></label>
+    <label class="f" style="margin:0"><span class="lb">Interest rate (%)</span><input type="number" id="sn_rate" value="9" step="0.25"></label>
+    <label class="f" style="margin:0"><span class="lb">Upfront fee (%)</span><input type="number" id="sn_fees" value="3" step="0.25"></label>
+    <label class="f" style="margin:0"><span class="lb">Investment income on note (%)</span><input type="number" id="sn_nier" value="4" step="0.25"></label>
+    <label class="f" style="margin:0"><span class="lb">Start date</span><input type="date" id="sn_start" value="2026-06-30"></label>
+    <label class="f" style="margin:0"><span class="lb">End date (calculated)</span><input type="text" id="sn_end" value="" readonly style="background:#f2f6f8;color:var(--muted)"></label>
+  </div>
+  <div id="sn_preview" style="margin-top:14px;display:none">
+    <div class="hint" style="font-weight:600;margin-bottom:6px">Annual net cash flow to TAC ($M)</div>
+    <div style="overflow:auto"><table id="sn_cfTbl" style="font-size:11px;min-width:600px"></table></div>
+  </div>
+</div>
+
+<div style="margin-bottom:10px;padding:10px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:7px">
+  <span class="lb" style="margin-right:12px">Run mode</span>
+  <label style="margin-right:16px"><input type="radio" name="runMode" id="runModeFast" checked> <strong>Fast</strong> — frontier only (~1 min)</label>
+  <label><input type="radio" name="runMode" id="runModeSlow"> <strong>Slow</strong> — adds the trough-RBC tail constraint (full RBC recompute per stochastic draw; ~4–5 min at 100×100)</label>
+</div>
+<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+  <button class="btn" id="runBtn" style="min-width:200px;font-size:14px;padding:12px 28px">▶ Run Frontier</button>
+  <span style="font-size:12px;color:var(--muted)" id="runStatus"></span>
+</div>
+<div class="pwrap" id="progWrap"><div class="pfill" id="progFill"></div></div>
+</section>
+
+<!-- ===== FRONTIER ===== -->
+<section class="tab" id="tab-frontier">
+  <div class="reco-banner" id="reco-banner"></div>
+  <div class="stats-strip" id="statsStrip"><div class="stat-box"><span class="stat-lbl">status</span><span class="stat-val" style="font-size:14px">run the frontier first</span></div></div>
+  <div class="card" style="margin-bottom:12px;background:#f5f8fa;border-left:3px solid var(--teal)">
+    <p style="font-size:12.5px;line-height:1.6;margin:0;color:#33404f">
+    <strong>How to read the risk axis.</strong> The horizontal axis is <strong>downside risk vs. the plan</strong>, not standard deviation. For each scenario the model recomputes 2026-issue PVDE across 100 shared, antithetic stochastic draws, then reports the <strong>CTE-90 shortfall</strong> = (deterministic plan PVDE) − (average PVDE in the worst 10% of those draws). Higher = more downside risk. In words: <em>in the bad tail, how much 2026 value do we give up versus plan</em> — so further left is safer and a point near zero means the downside barely deviates from plan. The table and tooltip also show <strong>worst-decile max drawdown</strong> — the deepest point the 2026 cohort's cumulative distributable earnings reach (the most capital underwater) in a bad-tail draw, before it climbs back. Vertical axis is the deterministic plan PVDE (return). Both are 2026-issue only.
+    </p>
+  </div>
+  <div class="fr-layout">
+    <div class="card" style="margin-bottom:0">
+      <div class="chart-wrap"><canvas id="frontier-chart"></canvas></div>
+    </div>
+    <div class="ctrl-card">
+      <div class="ctrl-grp">
+        <span class="ctrl-lbl">Display</span>
+        <label class="ck-item"><input type="checkbox" id="ck-cloud" checked onchange="updateChart()"><span>Stochastic cloud</span></label>
+        <label class="ck-item"><input type="checkbox" id="ck-det" checked onchange="updateChart()"><span>All scenarios</span></label>
+        <label class="ck-item"><input type="checkbox" id="ck-frontier" checked onchange="updateChart()"><span>Efficient frontier</span></label>
+        <label class="ck-item"><input type="checkbox" id="ck-feasonly" onchange="updateChart()"><span>Feasible only</span></label>
+      </div>
+      <div class="ctrl-grp">
+        <span class="ctrl-lbl">Filter table</span>
+        <label class="ck-item"><input type="radio" name="scen-filter" value="all" checked onchange="renderScenTable()"><span>All scenarios</span></label>
+        <label class="ck-item"><input type="radio" name="scen-filter" value="feasible" onchange="renderScenTable()"><span>Feasible only</span></label>
+        <label class="ck-item"><input type="radio" name="scen-filter" value="infeasible" onchange="renderScenTable()"><span>Infeasible only</span></label>
+        <label class="ck-item"><input type="radio" name="scen-filter" value="frontier" onchange="renderScenTable()"><span>Frontier only</span></label>
+      </div>
+      <div class="ctrl-grp">
+        <span class="ctrl-lbl">Axis limits (blank = auto)</span>
+        <div class="axis-label">X — Downside risk (CTE-90 shortfall, $M)</div>
+        <div class="axis-row" style="margin-bottom:8px">
+          <div><div class="axis-label">Min</div><input class="axis-input" type="number" id="ax-xmin" placeholder="auto" step="1" onchange="updateChart()"></div>
+          <div><div class="axis-label">Max</div><input class="axis-input" type="number" id="ax-xmax" placeholder="auto" step="1" onchange="updateChart()"></div>
+        </div>
+        <div class="axis-label">Y — Deterministic PVDE ($M)</div>
+        <div class="axis-row">
+          <div><div class="axis-label">Min</div><input class="axis-input" type="number" id="ax-ymin" placeholder="auto" step="10" onchange="updateChart()"></div>
+          <div><div class="axis-label">Max</div><input class="axis-input" type="number" id="ax-ymax" placeholder="auto" step="10" onchange="updateChart()"></div>
+        </div>
+        <button class="btn ghost sm" style="width:100%;margin-top:8px;justify-content:center" onclick="resetAxisLimits()">Reset to auto</button>
+      </div>
+      <div class="ctrl-grp">
+        <span class="ctrl-lbl">Downloads</span>
+        <button class="btn ghost sm" style="width:100%;margin-bottom:6px" onclick="downloadScenCSV()">↓ Results CSV</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <h2 class="sh" style="margin:0;flex:0 0 auto">Custom Scenario</h2>
+      <span style="font-size:11px;color:var(--muted)">Test your own sales mix against the frontier and constraints</span>
+    </div>
+    <p class="hint" style="margin-bottom:12px">Enter a full per-year sales table ($M) for each product across 2026–2035, then test it. These are the <strong>actual</strong> sales each year — the forward sales-growth schedule is <em>not</em> applied on top. You can <strong>paste a 3×10 block straight from Excel</strong> (click the first cell, then paste). The scenario is evaluated exactly like the random ones — full recalc, stochastic risk, all constraints — and added to the chart (shown as a ★) and the results table below. Run the frontier first so there's a frontier to compare against.</p>
+    <div class="tbl-scroll" style="margin-bottom:10px"><table id="csSalesTbl" style="font-size:12px;border-collapse:collapse"></table></div>
+    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <button class="btn" id="csTestBtn" style="padding:9px 20px">Test scenario</button>
+      <button class="btn ghost sm" id="csClearBtn" style="padding:9px 14px">Clear custom</button>
+    </div>
+    <div id="cs_result" style="margin-top:14px"></div>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <h2 class="sh" style="margin:0;flex:0 0 auto">Scenario Results</h2>
+      <span style="font-size:11px;color:var(--muted)" id="tbl-caption"></span>
+    </div>
+    <div class="tbl-scroll" id="scen-tbl-wrap"></div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="font-size:14px;font-weight:650;margin-bottom:6px">What-if — constraint shadow prices</h3>
+      <p class="hint" style="margin-bottom:10px">The marginal value of relaxing each constraint, computed from this run's stored scenarios (no re-simulation). Answers "how much feasible return does loosening this rule unlock?"</p>
+      <button class="btn ghost sm" id="shadowBtn" onclick="computeShadowPrices()">Compute shadow prices</button>
+      <div id="shadow-result" style="margin-top:10px"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="font-size:14px;font-weight:650;margin-bottom:6px">Frontier robustness</h3>
+      <p class="hint" style="margin-bottom:10px">Re-ranks the efficient frontier under harsher downside views built from the same stored draws — deeper tail (CTE-95), amplified dispersion (×1.5) and worst case. Scenarios that stay non-dominated under every view are flagged robust.</p>
+      <button class="btn ghost sm" id="robustBtn" onclick="testRobustness()">Test robustness</button>
+      <div id="robust-result" style="margin-top:10px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== COMPARE ===== -->
+<section class="tab" id="tab-compare">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <h2 class="sh" style="margin:0;flex:0 0 auto">Compare Scenarios</h2>
+      <span style="font-size:11px;color:var(--muted)">All meaningful metrics for two selections, side by side</span>
+    </div>
+    <p class="hint" style="margin-bottom:12px">Pick any two selections — Baseline, a run scenario, or your custom scenario — to compare every metric. Run the frontier first to populate the list. Δ&nbsp;=&nbsp;B&nbsp;−&nbsp;A.</p>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px">
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO A</label><select id="cmpSelA" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO B</label><select id="cmpSelB" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
+    </div>
+    <div id="cmp-result"></div>
+  </div>
+</section>
+
+<!-- ===== VNB ===== -->
+<section class="tab" id="tab-vnb">
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;margin-bottom:16px">
+    <h2 class="sh" style="margin:0;flex:0 0 auto">Value of New Business</h2>
+    <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO</label><select id="vnbScenSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SENSITIVITY RUN</label><select id="vnbSensSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:220px"><option value="det">Deterministic (no shocks)</option></select></div>
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">PRODUCT</label><div class="seg" id="vnbProdSeg"><button data-p="MS" class="active">Med Supp</button><button data-p="PN">Preneed</button><button data-p="HI">Hosp Ind</button></div></div>
+      <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">BASIS</label><div class="seg" id="vnbBasisSeg"><button data-b="orig" class="active">Original</button><button data-b="recalc">Scenario recalc</button></div></div>
+    </div>
+  </div>
+  <div class="g4" id="vnbStats" style="margin-bottom:18px"></div>
+  <div id="vnbSales" style="margin-bottom:18px"></div>
+  <div class="tbl-scroll"><table id="vnbTbl"></table></div>
+</div>
+</section>
+
+<!-- ===== RBC ===== -->
+<section class="tab" id="tab-rbc">
+  <div style="background:linear-gradient(135deg,#0d2434,#0d3340);border-radius:10px;padding:16px 20px;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px" id="rbcShot"></div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;margin-bottom:14px">
+      <h2 class="sh" style="margin:0;flex:0 0 auto">RBC &amp; Surplus — Full Charge Detail</h2>
+      <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO</label><select id="rbcScenSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SENSITIVITY RUN</label><select id="rbcSensSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:220px"><option value="det">Deterministic (no shocks)</option></select></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">BASIS</label><div class="seg" id="rbcBasisSeg"><button data-b="orig" class="active">Baseline charges</button><button data-b="scen">Scenario</button></div></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">&nbsp;</label><button class="btn ghost sm" onclick="exportScalars()" title="Export the selected scenario + run's systematic/process scalar stream (sales, claims, term, PN NIER) for pasting into the Excel workbook">↓ Export scalars</button></div>
+      </div>
+    </div>
+    <p class="hint" style="margin-bottom:12px">C-3 (TSC3) charged in full. Required capital = post-covariance × 1.03. Binding window 2026–2030 highlighted.</p>
+    <div class="tbl-scroll"><table id="rbcTbl"></table></div>
+  </div>
+</section>
+
+<!-- ===== CONSTRAINT EVIDENCE ===== -->
+<section class="tab" id="tab-evidence">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;margin-bottom:14px">
+      <h2 class="sh" style="margin:0;flex:0 0 auto">Constraint Evidence</h2>
+      <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO</label><select id="evScenSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SENSITIVITY RUN</label><select id="evSensSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:220px"><option value="det">Deterministic (no shocks)</option></select></div>
+      </div>
+    </div>
+    <p class="hint" style="margin-bottom:12px">Evidence for each constraint individually, evaluated for the selected scenario. C3–C8 use 2026 issues only; C1, C2, and C9 (trough-RBC tail) use the full projected capital position. The C9 card is populated only after a <strong>Slow</strong>-mode run.</p>
+    <div id="evidenceBody"></div>
+  </div>
+</section>
+
+<!-- ===== DEBUG ===== -->
+<section class="tab" id="tab-debug">
+<div class="card">
+  <h2 class="sh">Scenario Inspector</h2>
+  <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:18px">
+    <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SCENARIO</label><select id="dbgScenSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:260px"><option value="base">Baseline</option></select></div>
+    <div><label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">SENSITIVITY RUN</label><select id="dbgSensSel" style="font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:220px"><option value="det">Deterministic (no shocks)</option></select></div>
+    <button class="btn sm ghost" id="dbgRefresh">Refresh</button>
+  </div>
+  <div id="dbgContent"></div>
+</div>
+</section>
+
+<!-- ===== DOCS ===== -->
+<section class="tab" id="tab-docs">
+
+<details class="doc-acc" open><summary>1 · Purpose &amp; Overall Design</summary><div class="doc-acc-bd"><p class="doc-p">This tool searches for the capital-efficient mix of new business across three lines — Medicare Supplement (MS), Preneed (PN), and Hospital Indemnity (HI) — by re-running a full embedded-value (EV) projection under many candidate sales plans and locating the non-dominated set in risk/return space.</p>
+<p class="doc-p">Each candidate scenario sets a 2026 new-business sales level for each product. For that scenario the tool rebuilds the seriatim EV cash flows, recomputes RBC/surplus, derives a set of return and capital metrics, tests them against the constraint suite, and plots the scenario on two axes: <strong>return</strong> (deterministic PVDE of 2026 issues) and <strong>downside risk</strong> (the CTE-90 shortfall of that PVDE versus the deterministic plan, across stochastic claim/termination draws). Feasible, non-dominated scenarios form the efficient frontier.</p>
+<p class="doc-p" style="background:#f5f8fa;border-left:3px solid var(--teal);padding:8px 12px;border-radius:4px"><strong>Issue-year focus.</strong> The return and capital-adequacy <em>constraints</em> and the frontier return/risk axes are evaluated on the <strong>2026 issue year only</strong> — i.e. policies newly written in 2026, excluding the pre-2026 in-force block. This isolates the economics of the capital actually being deployed in the decision year. The VNB-by-product tab and the RBC/surplus projection continue to reflect <strong>all</strong> issue years and the full book; only the constraint and frontier metrics are narrowed to 2026 issues.</p></div></details>
+
+
+
+<details class="doc-acc"><summary>2 · VNB Engine — Income Statement Construction</summary><div class="doc-acc-bd"><p class="doc-p">The engine builds a monthly distributable-earnings statement per issue-year cohort, then aggregates to calendar years. Both the original and every scenario projection run on a 360-month (30-year) horizon, months 0 (Dec 2025) through 359 (Nov 2055). The annual rollup sums months by calendar year exactly as the source workbook's VNB Recalc does.</p>
+<p class="doc-p"><strong>Line definitions ($, per cohort, summed across cohorts for portfolio views):</strong></p>
+<ul>
+<li class="doc-li"><strong>Premium</strong> = EarnedPrem − ReinsPrem (net of reinsurance).</li>
+<li class="doc-li"><strong>Net investment income (NII)</strong> = mid-period average assets × monthly earned rate, where assets = CLRes + TabRes + TS and the monthly rate = (1 + NIER)<sup>1/12</sup> − 1. NIER is per-product; the 2030 value is held flat for all later years.</li>
+<li class="doc-li"><strong>Claims</strong> = IncClaims − ReinsClaims.</li>
+<li class="doc-li"><strong>Other benefits</strong> = −(change in tabular reserve) − (change-in-loading), where the change-in-loading term is carried on Preneed; other products carry the ceded ALR reserve movement. This term is included in the recalc (it is a real reserve cost, not a presentation artifact).</li>
+<li class="doc-li"><strong>Commission &amp; premium tax</strong> scale with premium.</li>
+<li class="doc-li"><strong>Acquisition</strong> = lives issued × per-life acquisition cost; inflated after the inflation-start year.</li>
+<li class="doc-li"><strong>Maintenance</strong> = lives in-force × per-policy annual cost ÷ 12; inflated similarly. The 2030 unit cost applies from 2030 onward (pre-inflation base).</li>
+<li class="doc-li"><strong>Pre-tax income (PTI)</strong> = revenue − benefits − expenses. <strong>Tax</strong> at the statutory rate. <strong>After-tax income (ATI)</strong> = PTI − tax.</li>
+<li class="doc-li"><strong>Change in target surplus (ΔTS)</strong> is released/charged as required capital runs off.</li>
+<li class="doc-li"><strong>Distributable earnings (DE)</strong> = ATI + ΔTS. This is the cash flow discounted for PVDE and solved for IRR.</li>
+</ul>
+<p class="doc-p"><strong>IRR / PVDE.</strong> PVDE discounts the annual DE stream at the configured discount rate. IRR solves NPV(DE) = 0. Because a runoff DE stream can turn negative again in late years (terminal reserve release), the NPV function can have more than one sign change; the solver gathers every bracketed root and returns the one nearest a 10% guess, matching Excel's IRR convention and avoiding spurious deep-negative roots.</p></div></details>
+
+
+
+<details class="doc-acc"><summary>3 · EV Recalculation Under a Scenario</summary><div class="doc-acc-bd"><p class="doc-p">A scenario is defined by, per product: a 2026 new-business sales level, a claims scalar, and a lapse scalar. From these the engine derives a <strong>per-issue-year sales scalar</strong> and rebuilds lives and dollars cohort by cohort. Frontier scenarios grow the 2026 level by the sales-growth schedule; a <strong>custom scenario</strong> may instead supply an explicit per-year sales plan (2026–2035), which is used verbatim with no growth applied on top.</p>
+<p class="doc-p"><strong>Sales scalar (per issue year Y):</strong> <code style="font-family:var(--mono);font-size:12px;background:#f2f6f8;padding:2px 6px;border-radius:4px">ss(Y) = updatedSales(Y) / originalSales(Y)</code>. Updated sales is the scenario sales level applied to every projection year; original sales is the workbook's per-year anchor for that issue year. Because the original-sales anchor varies by year, the scalar can differ year to year even when the scenario sales level is flat. Issue years beyond the scalar table (post-2035) and the pre-2026 in-force block receive a scalar of 1.</p>
+<p class="doc-p"><strong>Lives in-force, two regimes:</strong></p>
+<ul>
+<li class="doc-li"><strong>Build regime</strong> (calendar year &lt; issue year + 2): new cohorts scale proportionally, newLIF = origLIF × ss; the pre-2026 in-force block uses an additive form, newLIF = origLIF − origIssued + newIssued.</li>
+<li class="doc-li"><strong>Persistency regime</strong> (calendar year ≥ issue year + 2): <strong>rolling year-over-year</strong> — each month references the prior recalc year, not a fixed base:<br><code style="font-family:var(--mono);font-size:11.5px;background:#f2f6f8;padding:4px 8px;border-radius:4px;display:inline-block;margin:6px 0">newLIF[t] = newLIF[t−12] × max(0, 1 − (1 − origLIF[t]/origLIF[t−12]) × lapseScalar) × (ss for pre-2026 block; 1 for new cohorts)</code><br>The rolling form is what the source workbook uses. It correctly compounds the lapse shock each year and avoids a divide-by-zero when a cohort's base month has zero in-force. Retention is floored at 0 but not capped at 1 (a cohort can grow during build-up).</li>
+</ul>
+<p class="doc-p"><strong>Dollar &amp; reserve variables</strong> rescale per surviving life: <code style="font-family:var(--mono);font-size:12px;background:#f2f6f8;padding:2px 6px;border-radius:4px">newVal[t] = origVal[t] / origLIF[t] × newLIF[t]</code>. Claims additionally multiply by the claims scalar. This preserves the original per-life economics while re-weighting by the scenario's surviving lives. When a base month has zero in-force (tail months), the value passes through unscaled.</p></div></details>
+
+
+
+<details class="doc-acc"><summary>4 · RBC &amp; Surplus</summary><div class="doc-acc-bd"><p class="doc-p">Target-surplus (TS) charges are loaded seriatim by product, line, and year-end date. The NAIC after-covariance required capital is:</p>
+<p class="doc-p"><code style="font-family:var(--mono);font-size:12px;background:#f2f6f8;padding:4px 8px;border-radius:4px;display:inline-block;margin:6px 0">PostCov = TSC0 + TSC4a + √((TSC1+TSLR016+TSC3)² + TSC1CS² + TSC2² + TSC4b²)</code></p>
+<p class="doc-p">Required capital = PostCov × 1.03. <strong>Total Adjusted Capital (TAC)</strong> = Total Surplus − non-insurance portion + AVR + scenario income delta. RBC ratio = TAC / Required capital.</p>
+<p class="doc-p"><strong>Charge rescaling under a scenario — by driver.</strong> Each modeled-product charge rescales by the recalc/original ratio of its <em>economic driver</em>, evaluated at year-end (month 12 for 2026, 24 for 2027, …):</p>
+<ul>
+<li class="doc-li"><strong>TSC2</strong> (the C-2 / insurance-risk charge) scales by the <strong>incurred-claims ratio</strong> (recalc IncClaims ÷ original IncClaims). Because claims carry the claims scalar that lives do not, this ratio differs from the lives ratio — using the lives ratio here understates or overstates TSC2 by the claims-scalar gap. This matches the workbook's Surplus Recalc formula for TSC2 exactly.</li>
+<li class="doc-li"><strong>All other charges</strong> (TSC0, TSC1, TSLR016, TSC1CS, TSC3, TSC4a, TSC4b) scale by the <strong>lives-in-force ratio</strong> (recalc LivesInForce1 ÷ original LivesInForce1).</li>
+<li class="doc-li"><strong>All-Other (non-modeled) charges</strong> are frozen at baseline.</li>
+</ul>
+<p class="doc-p"><strong>TAC income delta (cumulative roll-forward).</strong> Scenario TAC is built year over year rather than as a single-year add-on. The seed year is baseline TAC plus the full-book <strong>pre-tax</strong> income delta (recalc − original, summed across the three products). Each later year carries the prior year's recalc TAC, adds the change in baseline TAC, and adds that year's income delta — taken <strong>pre-tax when baseline TAC declined that year, otherwise after-tax</strong>. Deltas are full-book (new business + pre-2026 in-force). This mirrors the source workbook's Surplus Recalc TAC formula.</p>
+<p class="doc-p"><strong>Surplus note (default ON, $100M).</strong> An optional surplus note raises capital: the company receives the amount at the start date (less an upfront fee) and earns monthly investment income on the proceeds (at the note's investment-income rate, from after issue through maturity), pays <em>quarterly</em> interest — one quarter of the annual coupon every three months after issue, including the maturity quarter — and repays principal at maturity. The note's net cash flow accumulates into Total Adjusted Capital (it touches the model only through TAC, nowhere else), so the RBC ratio is re-derived from the note-adjusted TAC. Defaults: $100M, 10-year tenor, 9% interest, 3% upfront fee, 4% investment income, 2026-06-30 start.</p></div></details>
+
+
+
+<details class="doc-acc"><summary>5 · Constraints</summary><div class="doc-acc-bd"><p class="doc-p">A scenario is <strong>feasible</strong> when it satisfies every constraint below. Constraints C3–C8 are evaluated on <strong>2026 issues only</strong> (pre-2026 in-force excluded); C1, C2, and C9 (trough-RBC tail) use the full projected capital position.</p>
+<ul>
+<li class="doc-li"><strong>C1 — Minimum RBC ratio (default 4.0×):</strong> the minimum projected RBC ratio over 2026–2030 must be at least the floor. Uses the full book / all issue years.</li>
+<li class="doc-li"><strong>C2 — Change in TAC / BOP TAC (default −12%):</strong> the year-over-year change in Total Adjusted Capital divided by beginning-of-period TAC, <code style="font-family:var(--mono);font-size:11.5px">(TAC[y] − TAC[y−1]) / TAC[y−1]</code>, must be ≥ the floor in every year. It is applied in every year — the worst single-year TAC change must clear the floor.</li>
+<li class="doc-li"><strong>C3 — 2026-issue IRR vs target (enforced):</strong> the IRR of the 2026 issue-year DE stream must be ≥ the sales-weighted average of the product hurdle rates, weighted by the scenario's 2026 sales mix.</li>
+<li class="doc-li"><strong>C4 — 2026-issue IRR tail risk (a = 8%, b = 15%):</strong> across the stochastic claim/termination draws, P(2026-issue IRR &lt; a) must be &lt; b. This is the most volatility-sensitive constraint and requires a sufficient draw count (minimum 50, default 100) for a stable tail estimate.</li>
+<li class="doc-li"><strong>C5 — 2026-issue DE positive by year (default yr 4 = 2029):</strong> the 2026 issue-year distributable earnings, summed across all three products, must be positive by the chosen projection year.</li>
+<li class="doc-li"><strong>C6 — 2026-issue cumulative DE positive by year (default yr 10 = 2035):</strong> cumulative 2026-issue DE (all three products) must turn positive by the chosen year.</li>
+<li class="doc-li"><strong>C7 — CumDE floor (default −$180M):</strong> the minimum cumulative 2026-issue DE (all three products) must not fall below the floor in any year — the deepest capital drawdown the 2026 cohort reaches before turning cash-positive.</li>
+<li class="doc-li"><strong>C8 — Year-1 DE floor (default −$150M):</strong> the 2026 (first-year) DE must not be more negative than the floor — an explicit cap on first-year acquisition strain, which also acts as a capital-budget proxy on how aggressive a single-year mix can be. Baseline year-1 DE is about −$109M, so the default leaves ~$41M of headroom. It has its own panel on the Constraint Evidence tab and a row in the What-if shadow prices.</li>
+<li class="doc-li"><strong>C9 — Trough RBC tail (x = 350%, y = 25%) — Slow mode only:</strong> across the stochastic draws, the probability that a scenario's <em>trough</em> RBC ratio (minimum over 2026–2030, full book, note-adjusted) falls below <em>x</em> must be ≤ <em>y</em>. The stochastic counterpart to C1: where C1 caps the deterministic trough, this caps how often capital adequacy breaches under shocks. It requires a full RBC recompute on every draw, so it is evaluated only when the run is set to <strong>Slow</strong> mode (~4–5 min at 100×100); Fast runs skip it.</li>
+</ul></div></details>
+
+
+
+<details class="doc-acc"><summary>6 · Frontier &amp; Stochastic Method</summary><div class="doc-acc-bd"><p class="doc-p"><strong>Scenario sampling.</strong> Sales levels are drawn by Latin Hypercube Sampling across the configured bounds for each product, giving even coverage of the sales space with relatively few scenarios. The stochastic draw count is floored at 50 (default 100); the C4 tail test counts exceedances among these draws, so too few draws make feasibility unstable. Runs are <strong>seeded</strong>, so a given configuration reproduces the same frontier; the seed is set in the Configuration tab (Randomize draws a fresh one).</p>
+<p class="doc-p"><strong>Deterministic axis (return).</strong> Each scenario's plotted PVDE is the discounted 2026-issue DE stream (all three products). The IRR shown is the 2026-issue IRR; the target is the 2026-weighted hurdle.</p>
+<p class="doc-p"><strong>Stochastic axis (risk).</strong> For each scenario, the claims and termination rates are perturbed by lognormal shocks (per the σ table) and the 2026-issue PVDE is recomputed for each draw. Each shock has two parts: a <strong>systematic</strong> component (one persistent draw applied to every year) and a <strong>process</strong> component (an independent draw each year), combined as a mean-1 lognormal multiplier per year. <strong>Preneed is the exception:</strong> its claims and termination are one coupled mortality shock (a death is at once a claim, a reserve release and a decrement), and it carries an additional Preneed-only <strong>NIER (investment-yield)</strong> shock — an additive basis-point shift on the earned rate — which is its dominant risk. See Risk Calibration below. Systematic risk drives the tail because it never diversifies; process risk largely averages out over the 30-year horizon. To make scenarios comparable, every scenario is evaluated against the <em>same</em> shared bank of draws (common random numbers), each draw paired with its mirror (antithetic), so differences between scenarios reflect the sales mix rather than Monte-Carlo noise. The scenario's <strong>risk</strong> is the <strong>CTE-90 downside shortfall</strong> — how much 2026 PVDE the worst 10% of outcomes give up versus the deterministic plan (lower is better). The table and tooltip also report the <strong>worst-decile max drawdown</strong> (deepest cumulative-DE point across draws); std-dev and downside semi-deviation are retained in the CSV export for reference. The <strong>P10 IRR</strong> is the 10th percentile of the 2026-issue IRR across draws. See the <strong>Risk Calibration</strong> sections below for how the σ inputs are derived.</p>
+<p class="doc-p"><strong>Efficient frontier.</strong> Among feasible scenarios, a scenario is on the frontier if no other feasible scenario has both higher PVDE and lower-or-equal risk (and is strictly better on at least one). The min-RBC statistic reported alongside remains a full-book, all-issue-year figure.</p></div></details>
+
+
+
+<details class="doc-acc"><summary>7 · Modeling Notes &amp; Conventions</summary><div class="doc-acc-bd"><ul>
+<li class="doc-li"><strong>Horizon &amp; month indexing:</strong> months 0–359 (Dec 2025 – Nov 2055). The annual rollup of flows matches the workbook's VNB Recalc month-to-year mapping. The final calendar month (Dec 2055) is intentionally cut off in both the VNB Calc and VNB Recalc — it errors out the model transformations — so calendar 2055 contains 11 months (Jan–Nov).</li>
+<li class="doc-li"><strong>Preneed "change in loading":</strong> Preneed carries a change-in-loading line where the other products carry ceded reserves. This is a source-data difference, not a modeling inconsistency, and the term is included in Preneed's other-benefits cost.</li>
+<li class="doc-li"><strong>Original-sales anchors:</strong> the scenario sales scalar divides by the workbook's per-year original-sales anchor for each issue year. Anchors are carried and editable for all scalar years (2026–2035).</li>
+<li class="doc-li"><strong>Validation:</strong> with the workbook's own scenario scalars, recalc IRRs reconcile to the source VNB Recalc within a few basis points per product (MS and HI to the basis point); per-cohort lives reconcile to the penny.</li>
+</ul></div></details>
+
+
+
+<h2 class="sh">Risk Calibration</h2>
+
+<details class="doc-acc"><summary>Risk Calibration — what the σ inputs really represent</summary><div class="doc-acc-bd"><p class="doc-p">The stochastic engine multiplies each product's incurred claims and its <strong>termination rate</strong> by a lognormal shock with mean&nbsp;1 and standard deviation&nbsp;σ. So σ is <strong>not</strong> the volatility of an individual claim — it is the volatility of the <em>aggregate annual actual-to-expected (A/E) ratio</em> for the whole block: the chance that, in a given year, total claims (or total terminations) come in materially above or below what the EV projection assumes. That is exactly the quantity the frontier's risk axis prices.</p>
+<p class="doc-p" style="background:#eef6f8;border-left:3px solid var(--teal);padding:8px 12px;border-radius:4px"><strong>The "lapse" σ is an all-cause termination σ.</strong> The decrement these shocks scale is total termination — voluntary lapse <em>plus</em> mortality plus other exits — not voluntary lapse alone. That matters most for Medicare Supplement and Hospital Indemnity, where terminations mix surrender and mortality.</p>
+<p class="doc-p" style="background:#fef6ec;border-left:3px solid #d08b2c;padding:8px 12px;border-radius:4px"><strong>Preneed is modeled differently — claims and termination are ONE shock.</strong> Preneed is pre-funded, so a death is <em>simultaneously</em> the claim, the reserve release, and the decrement. Shocking termination on its own (or gross claims on their own) is therefore wrong. Preneed uses a <strong>single mortality shock</strong> that drives all three together: more deaths raise claims, remove lives, and release those lives' reserves, with the strain netting to the <strong>net amount at risk</strong> (benefit − reserve) — large for young business where reserves are still small, shrinking as the block matures. Because the two are one event, Preneed has no separate termination σ and no claims↔termination ρ; its claims σ <em>is</em> the mortality σ. Preneed's dominant risk is instead the <strong>NIER (investment-yield) shock</strong> — see its calibration below.</p>
+<p class="doc-p">These values are calibrated to published industry experience as a defensible starting bracket. They are informed priors, not final assumptions; the appropriate basis is the carrier's own seriatim A/E history (see methodology and limitations).</p></div></details>
+
+
+
+<details class="doc-acc"><summary>Recommended &sigma; — systematic and process components</summary><div class="doc-acc-bd"><p class="doc-p">Each annual A/E multiplier carries two independent pieces: a <strong>systematic</strong> shock (a persistent assumption/pricing miss — one draw held across all 30 years) and a <strong>process</strong> shock (random year-to-year fluctuation — a fresh draw each year). They combine as <code style="font-family:var(--mono);font-size:12px;background:#f2f6f8;padding:1px 5px;border-radius:3px">mult(y) = exp(z<sub>sys</sub>&middot;&sigma;<sub>sys</sub> + z<sub>proc</sub>(y)&middot;&sigma;<sub>proc</sub> − ½(&sigma;<sub>sys</sub>²+&sigma;<sub>proc</sub>²))</code>, mean 1.</p><div class="hscroll"><table style="font-size:12.5px;border-collapse:collapse;min-width:max-content;width:auto"><thead><tr style="text-align:left;color:var(--muted);text-transform:uppercase;font-size:10.5px"><th style="padding:5px 10px 5px 6px;white-space:nowrap">Product</th><th style="padding:5px 10px;white-space:nowrap">Risk</th><th style="padding:5px 10px;white-space:nowrap">Systematic &sigma;</th><th style="padding:5px 10px;white-space:nowrap">Process &sigma;</th><th style="padding:5px 10px;white-space:nowrap">Combined annual</th><th style="padding:5px 10px;white-space:nowrap">Primary driver</th></tr></thead><tbody style="font-family:var(--mono)"><tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px 5px 6px;white-space:nowrap">Medicare Supplement</td><td style="padding:5px 10px;white-space:nowrap">Claims</td><td style="padding:5px 10px;white-space:nowrap;font-weight:700;color:var(--teal)">4.0%</td><td style="padding:5px 10px;white-space:nowrap">3.0%</td><td style="padding:5px 10px;white-space:nowrap">5.0%</td><td style="padding:5px 10px;white-space:nowrap;font-family:var(--sans,inherit)">Trend &amp; rate-cycle (systematic); large regulated block keeps process small</td></tr><tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px 5px 6px;white-space:nowrap">Medicare Supplement</td><td style="padding:5px 10px;white-space:nowrap">Termination</td><td style="padding:5px 10px;white-space:nowrap;font-weight:700;color:var(--teal)">6.5%</td><td style="padding:5px 10px;white-space:nowrap">3.0%</td><td style="padding:5px 10px;white-space:nowrap">7.2%</td><td style="padding:5px 10px;white-space:nowrap;font-family:var(--sans,inherit)">Antiselective switching after rate increases; senior mortality steadies the rate</td></tr><tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px 5px 6px;white-space:nowrap">Preneed</td><td style="padding:5px 10px;white-space:nowrap">Mortality (coupled)</td><td style="padding:5px 10px;white-space:nowrap;font-weight:700;color:var(--teal)">3.5%</td><td style="padding:5px 10px;white-space:nowrap">2.0%</td><td style="padding:5px 10px;white-space:nowrap">4.0%</td><td style="padding:5px 10px;white-space:nowrap;font-family:var(--sans,inherit)">One shock drives claims + termination + reserve release together (net amount at risk); stable mortality A/E</td></tr><tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px 5px 6px;white-space:nowrap">Preneed</td><td style="padding:5px 10px;white-space:nowrap">NIER (investment yield)</td><td style="padding:5px 10px;white-space:nowrap;font-weight:700;color:var(--teal)">35 bps</td><td style="padding:5px 10px;white-space:nowrap">15 bps</td><td style="padding:5px 10px;white-space:nowrap">~38 bps</td><td style="padding:5px 10px;white-space:nowrap;font-family:var(--sans,inherit)">Dominant PN risk; additive level shift on the earned rate — see NIER calibration below</td></tr><tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px 5px 6px;white-space:nowrap">Hospital Indemnity</td><td style="padding:5px 10px;white-space:nowrap">Claims (morbidity)</td><td style="padding:5px 10px;white-space:nowrap;font-weight:700;color:var(--teal)">5.5%</td><td style="padding:5px 10px;white-space:nowrap">4.0%</td><td style="padding:5px 10px;white-space:nowrap">6.8%</td><td style="padding:5px 10px;white-space:nowrap;font-family:var(--sans,inherit)">Most variable claims line; indemnity benefit structure bounds it; smaller block → more process</td></tr><tr style="border-top:1px solid var(--line)"><td style="padding:5px 10px 5px 6px;white-space:nowrap">Hospital Indemnity</td><td style="padding:5px 10px;white-space:nowrap">Termination</td><td style="padding:5px 10px;white-space:nowrap;font-weight:700;color:var(--teal)">7.0%</td><td style="padding:5px 10px;white-space:nowrap">4.0%</td><td style="padding:5px 10px;white-space:nowrap">8.1%</td><td style="padding:5px 10px;white-space:nowrap;font-family:var(--sans,inherit)">Rate-driven lapse plus mortality; smaller individual block → more process</td></tr></tbody></table></div><p class="doc-p" style="margin-top:10px">These are the live defaults in the Configuration tab's Stochastic &sigma; table and remain editable there. For Medicare Supplement and Hospital Indemnity the <strong>combined</strong> annual &sigma; reproduces the prior single-&sigma; calibration (5/7 and 7/8 claims/termination), so the model stays consistent with the loss-ratio evidence — now split into the part that persists and the part that diversifies. <strong>Preneed</strong> folds its old separate claims and termination shocks into the one coupled mortality shock shown above (combined 4.0%), and adds the NIER shock as its dominant risk. The <strong>systematic</strong> component dominates every line and drives the frontier's tail risk, because a persistent miss never cancels while year-to-year process noise largely averages out over the 30-year horizon. Setting process to 0 recovers a pure single-shock model. &sigma; calibrates how risk is <em>measured</em>; feasibility is governed by the constraint suite.</p></div></details>
+
+
+
+<details class="doc-acc"><summary>Why split systematic from process</summary><div class="doc-acc-bd"><p class="doc-p">Actuarial credibility theory decomposes the total variance of experience into <strong>process variance</strong> — the inherent randomness of the claim/decrement process, which diversifies away as exposure grows — and <strong>parameter (structure) variance</strong>, the variance of the true underlying means, which does not diversify. The persistent assumption miss is parameter risk; the year-to-year wobble is process risk.</p><p class="doc-p">The magnitude of the process piece is anchored by the full-credibility standard: a block large enough to be fully credible has an annual aggregate-claims process coefficient of variation of roughly 1–2.5%, with smaller or partially-credible blocks running higher. That is why process &sigma; is set low for the large Medicare Supplement and Preneed blocks (2–3%) and higher for the smaller Hospital Indemnity block (4%).</p><p class="doc-p">It also explains the split of the original calibration. The year-to-year loss-ratio swings the &sigma; values were drawn from (e.g. Medigap ~72–85% over recent years) are the <em>total</em> variation, which already contained a process slice. Holding the combined annual &sigma; at those observed levels and carving out the credibility-based process floor leaves the systematic component as <code style="font-family:var(--mono);font-size:12px;background:#f2f6f8;padding:1px 5px;border-radius:3px">&radic;(total² − process²)</code> — slightly below the former single number, because that single number had been treating diversifiable noise as if it persisted for 30 years. The combined &sigma; is unchanged; only its interpretation is sharper.</p></div></details>
+
+<details class="doc-acc"><summary>Process correlation (claims ↔ termination)</summary><div class="doc-acc-bd"><p class="doc-p">The systematic shocks stay independent across risks and products — a pricing miss on claims is its own event. The <strong>process</strong> shocks, however, are correlated <em>within a product and year</em>: a year of unexpectedly heavy claims tends to coincide with unexpectedly heavy termination. Each year’s lapse-process draw is built as <code style="font-family:var(--mono);font-size:12px;background:#f2f6f8;padding:1px 5px;border-radius:3px">z<sub>lapse</sub> = ρ·z<sub>claims</sub> + √(1−ρ²)·z<sub>indep</sub></code>, so ρ sets how tightly the two move together (0 = independent). Correlating the draws raises portfolio tail risk because the two adverse events stack rather than diversify.</p><p class="doc-p"><strong>Why positive.</strong> The link is antiselection: when more policyholders terminate, the healthier lives tend to leave and the sicker pool that remains carries higher claims per life. SOA/SCOR post-level-term studies document this directly — the same drivers that raise shock lapses also raise mortality (and morbidity) deterioration.</p><p class="doc-p">Default ρ by product (editable in Configuration): <strong>Medicare Supplement 0.25</strong> and <strong>Hospital Indemnity 0.25</strong> (moderate antiselective coupling). <strong>Preneed is excluded</strong> — its claims and termination are not merely correlated, they are the <em>same</em> mortality event, so they are modeled as one coupled shock (ρ = 1 by construction) rather than via a tunable ρ. These are deliberately modest pending the carrier’s own joint claims/lapse experience.</p></div></details>
+
+<details class="doc-acc"><summary>Preneed NIER (investment-yield) shock — the dominant PN risk</summary><div class="doc-acc-bd"><p class="doc-p">Preneed is a long-duration, pre-funded block: a large reserve is held for decades and earns investment income at the <strong>net investment earned rate (NIER)</strong>. The new-business margin is thin and highly levered to that earned rate, so a miss on NIER is the single largest risk on the block — larger than the mortality shock. The model therefore applies a <strong>Preneed-only NIER shock</strong>: an <strong>additive basis-point level shift</strong> to the earned rate (not a lognormal multiplier), split into a <strong>systematic</strong> piece (a persistent miss on the long-run earned rate, held across all years) and a <strong>process</strong> piece (year-to-year reinvestment fluctuation). An adverse draw lowers the rate, reducing investment income and distributable earnings; the shock is mean-zero and symmetric. On the <strong>risk axis</strong> it feeds the same 2026-issue PVDE the frontier prices, alongside the mortality shock. <strong>Scoping (which cohorts it touches):</strong> the systematic (pricing) miss applies to business priced from <strong>2026 forward</strong>; the process (reinvestment) fluctuation applies to <strong>every issue year, including the pre-2026 in-force</strong>. That full-book difference is routed into the <strong>RBC / TAC</strong> calculation — when you select a stochastic run on the RBC or Debug tab, the displayed required-capital and TAC reflect the NIER stress on the whole block (back book on process; new business on systematic+process). Feasibility and the chart's risk axis stay 2026-issue. (The per-product 2026-issue IRR is unaffected by NIER scoping and remains scale-invariant — see the Debug tab.)</p>
+<p class="doc-p"><strong>Calibration (default 35 bps systematic / 15 bps process).</strong> The earned rate here is a portfolio <em>book</em> yield, which moves slowly because only new-money reinvestment repriced at current rates flows through each year. Industry evidence:</p>
+<ul class="doc-li" style="margin:0 0 8px 18px"><li>U.S. life-industry <strong>net yield on invested assets ≈ 4.57%</strong> at year-end 2024, with <strong>year-over-year book-yield moves of roughly 15 bps</strong> (fixed-income book yield +15 bps in 2024; net yield +25/+26 bps in 2024/2023; a ~60 bps drift over the four years 2018–2022, ≈ 15 bps/yr). This anchors the <strong>process</strong> σ at ~15 bps.</li>
+<li>Preneed pricing and valuation carry <strong>interest/discount-rate adverse-deviation margins of 20–50 bps</strong> (per preneed insurer SEC filings) — the provision actuaries hold for a <em>sustained</em> earned-rate miss. This, together with the multi-year drift above, anchors the <strong>systematic</strong> σ at ~35 bps.</li></ul>
+<p class="doc-p" style="font-size:11px;color:var(--muted)">Sources: NEAM, <em>2024 U.S. Life Industry Investment Highlights</em>; NAIC, <em>2024 Annual Life Industry Commentary</em> and capital-markets asset-mix report (YE2024); preneed insurer SEC filings (interest/discount-rate adverse-deviation 0.20–0.50%). Both σ values are editable in the Configuration tab; set process to 0 for a pure level-shift model.</p></div></details>
+
+
+
+
+<details class="doc-acc"><summary>Evidence by product</summary><div class="doc-acc-bd"><p class="doc-p"><strong>Medicare Supplement &mdash; claims (moderate, mostly systematic).</strong> Industry Medigap loss ratios swung roughly from the low-70s% to the mid-80s% over recent years (&asymp;80% in 2019, &asymp;72% in the 2020 pandemic year, &asymp;77% in 2021, &asymp;85% individual by 2024 per NAIC experience exhibits and Telos/RGA analyses). Excluding the pandemic outlier, the year-to-year spread implies a coefficient of variation on the annual loss ratio of ~4&ndash;6%. Because the line is large, annually-repriced and minimum-loss-ratio-regulated, process risk is small and the volatility is trend/rate-cycle driven &mdash; supporting a claims &sigma; near 5%.</p>
+<p class="doc-p"><strong>Medicare Supplement &mdash; termination.</strong> Medigap termination is structurally rate-sensitive. Premiums rise every year with no federal cap on increases, which drives switching, and a widening set of states force annual switching windows &mdash; California and Oregon birthday rules, Virginia's birthday rule effective July 2025, and year-round guaranteed-issue in CT, ME, MA and NY. Guaranteed-issue lets healthier lives leave when rates rise, so terminations both spike and antiselect in step with the rate cycle. Because these are 65+ lives, a meaningful and relatively steady slice of all-cause termination is mortality, which dilutes the &sigma; of the total termination rate. Net of those forces, an all-cause termination &sigma; around 7% is defensible.</p>
+<p class="doc-p"><strong>Preneed &mdash; the most stable line.</strong> Preneed is effectively single- or limited-pay whole life, so claims are mortality, and aggregate mortality A/E on a sizeable block is stable (insurer LDTI disclosures show whole-life mortality A/E near 0.9&ndash;1.0), supporting a claims &sigma; around 4%. Because most industry preneed is single-pay and barely surrenders, all-cause termination is dominated by mortality &mdash; so its &sigma; is low (&asymp;5%) and largely the same event as the claims shock. The watch-items are anti-selection at issue and benefit-side funeral-cost inflation.</p>
+<p class="doc-p"><strong>Hospital Indemnity &mdash; bounded by the indemnity structure.</strong> Hospital indemnity pays fixed, scheduled benefits (a set amount per hospital day or event) rather than reimbursing actual medical cost. That caps benefit exposure per claim, so utilization variance translates into bounded benefit variance &mdash; materially less volatile than the open-ended reimbursement morbidity behind the largest supplemental-health A/E swings (a recent insurer LDTI filing showed morbidity 23&ndash;29% above expected on a reimbursement-style block). Morbidity remains the most variable of the three claims drivers, so HI claims &sigma; is kept highest of the lines at ~7%, while the indemnity benefit structure holds it well below open-ended morbidity. Termination is individual senior business &mdash; rate-driven lapse plus mortality, not worksite churn &mdash; supporting &asymp;8%.</p></div></details>
+
+
+<details class="doc-acc"><summary>Caveats &amp; what would sharpen these numbers</summary><div class="doc-acc-bd"><ul style="font-size:13px;line-height:1.7;padding-left:20px">
+<li>These σ are <strong>systematic-risk, portfolio-level</strong> figures appropriate for sizing risk on large 2026 sales plans. They deliberately do not credit a diversification (volume) benefit; if the seriatim decomposition shows non-trivial process risk, large scenarios could earn a small σ reduction.</li>
+<li>Each shock is a <strong>two-component</strong> draw — a persistent systematic piece held across the projection plus an independent process piece redrawn each year — and within a product the process claims and termination draws are correlated via ρ (Preneed is one coupled mortality shock). The remaining refinements are letting the process piece mean-revert/trend (autocorrelation) and adding correlation <em>across</em> products; both are on the roadmap.</li>
+<li><strong>σ does not set feasibility.</strong> The feasible region is governed by the constraint suite — in particular the C4 IRR-tail test — not by these σ directly. These figures should be replaced with carrier-specific A/E calibration once the seriatim series is built.</li>
+</ul></div></details>
+
+
+
+<details class="doc-acc"><summary>Sources</summary><div class="doc-acc-bd"><p class="doc-p" style="font-size:12px;color:var(--muted)">NAIC, Medicare Supplement Loss Ratio Experience Exhibits (2020–2024). Telos Actuarial and RGA Medigap commentary. Medicare.org / Medicare.gov on Medigap rate increases and switching rights; state bulletins on birthday-rule and guaranteed-issue windows (CA, OR, VA 2025, CT, ME, MA, NY). Society of Actuaries "Understanding the Volatility of Experience" and life/UL persistency studies. LIMRA whole-life &amp; final-expense persistency and Life Insurers Council preneed studies. Insurer LDTI disclosure (SEC filing) for whole-life and supplemental-health actual-vs-expected mortality, morbidity and lapse. American Academy of Actuaries, "Loss Ratios and Health Coverages." Figures are paraphrased; consult the originals for exact values.</p></div></details>
+
+
+
+
+<details class="doc-acc"><summary>Limitations &amp; roadmap</summary><div class="doc-acc-bd"><p class="doc-p">The model is deliberately scoped. The items below are documented gaps and planned refinements; none affect the deterministic engine, which reconciles to the workbook.</p>
+<p class="doc-p" style="font-weight:600;margin-bottom:6px">Methodology extensions</p>
+<ul style="font-size:13px;line-height:1.7;padding-left:20px">
+<li><strong>Own-data &sigma; calibration.</strong> Replace the industry-derived claims and termination &sigma; priors with Wellabe's seriatim actual-to-expected history — the single highest-value refinement. Method:
+<ol style="margin:6px 0 0 0;padding-left:20px">
+<li><strong>Build an annual A/E series per product</strong> — actual incurred claims ÷ expected, and actual all-cause terminations ÷ expected, each calendar year (15+ years gives a usable sample).</li>
+<li><strong>Decompose process vs. systematic risk</strong> — process risk shrinks ~1/&radic;n with volume; systematic risk (trend, rate-cycle, utilization) does not. For sizing large sales plans, keep mostly the systematic residual (total A/E variance minus expected process variance).</li>
+<li><strong>Don't assume normal — fit it</strong> — A/E ratios are right-skewed and bounded at zero (lognormal is the right family); confirm with a block bootstrap (resample whole calendar years) and a Q&ndash;Q plot, swapping to empirical-quantile draws if the tails are fatter.</li>
+<li><strong>Calibrate termination on early durations</strong> — the frontier isolates the 2026 cohort, so early-duration (1&ndash;3) termination volatility dominates.</li>
+<li><strong>Measure the claims&harr;termination correlation</strong> from paired annual residuals, per product, to set &rho; (Preneed is effectively one event; MS rate increases couple the two).</li>
+</ol></li>
+<li><strong>Cross-product correlation.</strong> The process shocks now couple claims and termination <em>within</em> each product (see Risk Calibration). Still independent <em>across</em> products — MS and HI claims share utilization drivers, so a common-shock or copula layer across product lines would further shape the portfolio tail. Systematic shocks remain independent throughout.</li>
+<li><strong>Within-process autocorrelation / trend (refinement).</strong> The two-component shock — a persistent systematic draw plus an independent annual process draw — is built in (see Risk Calibration). The remaining refinement is to let the process component mean-revert or trend year to year (an AR-type process) rather than be independent across years, which would shape the medium-horizon tail.</li>
+<li><strong>Reinsurance as a lever.</strong> A quota-share or other treaty changes capital strain and risk per unit of new business, shifting the efficient frontier and potentially making otherwise-infeasible mixes reachable. Integrating the companion reinsurance tool's economics as a toggle is the next major build.</li>
+<li><strong>Multi-year optimization.</strong> The frontier optimizes 2026 in isolation; 2026 is the first move in a 2026&ndash;2035 trajectory, and the surplus-note and RBC paths make years interdependent. Planned: test the 2026 optimum for robustness across forward-year plans, then optimize the path.</li>
+<li><strong>Smoothed C4 tail estimator.</strong> Estimate the IRR-tail probability by fitting a distribution to the draws and integrating, rather than counting exceedances, to remove small-sample lumpiness near the threshold.</li>
+</ul>
+<p class="doc-p" style="font-weight:600;margin:10px 0 6px">Validation / QA</p>
+<ul style="font-size:13px;line-height:1.7;padding-left:20px">
+<li><strong>Preneed cohort reconciliation.</strong> Trace a handful of PN cells (a 2026 cohort and the &lt;2026 block) back to the source workbook and add unit tests on the divide-by-zero guard branches.</li>
+<li><strong>Convention confirmations.</strong> Confirm the embedded RBC factor (the &times;1.03 required-capital multiplier) and the cumulative TAC roll-forward (seed pre-tax income delta; per-year pre-tax/after-tax switch on whether baseline TAC declined) against the source workbook.</li>
+</ul>
+<p class="doc-p" style="font-weight:600;margin:10px 0 6px">Business inputs to confirm</p>
+<ul style="font-size:13px;line-height:1.7;padding-left:20px">
+<li><strong>2026 sales bounds.</strong> Confirm the per-product sampling ranges reflect realistic 2026 distribution capacity, so the frontier explores the achievable opportunity set.</li>
+</ul>
+<p class="doc-p" style="font-weight:600;margin:10px 0 6px">Considered &mdash; closed</p>
+<ul style="font-size:13px;line-height:1.7;padding-left:20px">
+<li><strong>Capital-budget sampling.</strong> The data-science concern that the sampler draws products independently rather than within a shared capital budget is addressed by the <strong>Year-1 DE floor</strong> constraint, which caps first-year capital strain and gates over-aggressive combinations.</li>
+<li><strong>NPV / IRR timing.</strong> The one-period offset between the NPV (end-of-year) and IRR (t=0) conventions is intentional Excel-faithful behavior; confirmed acceptable.</li>
+</ul></div></details>
+
+
+
+</section>
+
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- ?v=… cache-busts the engine + app on GitHub Pages; bump it whenever viewer/engine JS changes (worker.js inherits this version). -->
+<script src="../src/vnb.js?v=217"></script>
+<script src="../src/ev-recalc.js?v=217"></script>
+<script src="../src/rbc-surplus.js?v=217"></script>
+<script src="../src/frontier.js?v=217"></script>
+<script src="app.js?v=217"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Claude Code local (machine-specific) settings
+.claude/settings.local.json
+
+# OS / editor cruft
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Headless runner outputs (regenerate via: node runner/run.js)
+runner/results/

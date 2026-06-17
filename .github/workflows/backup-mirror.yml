@@ -1,0 +1,47 @@
+name: Backup mirror to EFBackup
+
+# Keeps the EFBackup repo aligned with this one, so the project survives this
+# repo being accidentally deleted. Runs on every push (immediate alignment),
+# once daily (catches anything a push event missed), and on demand via the
+# "Run workflow" button.
+#
+# One-time setup (see README "Backups"): add a repository secret named
+# BACKUP_TOKEN — a fine-grained Personal Access Token scoped to ONLY the
+# EFBackup repo with "Contents: Read and write". Without it the run fails by
+# design (it has no permission to push to the other repo).
+
+on:
+  push:
+  schedule:
+    - cron: '0 6 * * *'   # daily at 06:00 UTC
+  workflow_dispatch:
+
+# Don't pile up overlapping mirror runs; let the newest win.
+concurrency:
+  group: backup-mirror
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror this repo into EFBackup
+        env:
+          SOURCE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+          SOURCE_REPO: ${{ github.repository }}
+          # EFBackup under the same account/org that owns this repo.
+          # If EFBackup lives under a DIFFERENT account, change this one value.
+          BACKUP_REPO: ${{ github.repository_owner }}/EFBackup
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_TOKEN}" ]; then
+            echo "::error::Missing BACKUP_TOKEN secret. See the README 'Backups' section for setup."
+            exit 1
+          fi
+          # Exact replica (all branches + tags + full history) of the source repo.
+          git clone --mirror "https://x-access-token:${SOURCE_TOKEN}@github.com/${SOURCE_REPO}.git" src.git
+          cd src.git
+          # Force every ref into EFBackup so it stays byte-for-byte aligned with main.
+          git push --mirror "https://x-access-token:${BACKUP_TOKEN}@github.com/${BACKUP_REPO}.git"
+          echo "Mirrored ${SOURCE_REPO} -> ${BACKUP_REPO}"
