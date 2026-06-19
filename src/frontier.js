@@ -379,31 +379,39 @@
     function _ddFromCum(cum) { var d = 0; for (var y = 2026; y <= 2055; y++) { var v = cum[y]; if (v != null && v < d) d = v; } return d; }
     var _now = (typeof performance !== 'undefined' && performance.now) ? function () { return performance.now(); } : function () { return Date.now(); };
 
-    // ---- multi-year growth: build a sales path from a 2026 level + constant per-product growth, and
-    // REPAIR an infeasible plan by cutting growth (MS first, then HI, then PN) toward S.growthMin. Used
-    // by runSweep and the headless export-scalars so both reproduce the same per-scenario plan. ----
+    // ---- multi-year growth: build a sales path from a 2026 level + a PER-YEAR growth rate per product
+    // (g[c] = [g2027,g2028,g2029,g2030], each drawn within [growthMin,growthTarget]), and REPAIR an
+    // infeasible plan by cutting growth MS-first, then HI, then PN; within a product the LATEST year is
+    // cut first (so repaired plans front-load). Used by runSweep and headless export-scalars so both
+    // reproduce the same per-scenario plan. ----
     var _U = { MS: 1, PN: 1, HI: 1 };
+    function _clone(g) { return { MS: g.MS.slice(), PN: g.PN.slice(), HI: g.HI.slice() }; }
     function mkPath(level, g) {
       var nYears = (S.params.scalars.years || []).length || 10, out = {};
-      PRODS.forEach(function (c) { var arr = [level[c]], prev = level[c]; for (var yi = 0; yi < 4; yi++) { prev = prev * (1 + g[c]); arr.push(prev); } while (arr.length < nYears) arr.push(arr[4]); out[c] = arr; });
+      PRODS.forEach(function (c) { var arr = [level[c]], prev = level[c]; for (var yi = 0; yi < 4; yi++) { prev = prev * (1 + g[c][yi]); arr.push(prev); } while (arr.length < nYears) arr.push(arr[4]); out[c] = arr; });
       return out;
     }
     function _detFeasibleLite(level, g) { return evalCons(buildScen(mkPath(level, g), _U, _U, null, true), null).length === 0; }
-    function repairGrowth(level) {
-      var TGT = S.growthTarget || { MS: 0, PN: 0, HI: 0 }, GMIN = S.growthMin || { MS: 0, PN: 0, HI: 0 };
-      var g = { MS: TGT.MS, PN: TGT.PN, HI: TGT.HI };
+    // gdraw: per-year per-product growth as drawn within [min,target]. Returns the (possibly repaired) growth.
+    function repairGrowth(level, gdraw) {
+      var GMIN = S.growthMin || { MS: 0, PN: 0, HI: 0 };
+      var g = _clone(gdraw);
       if (_detFeasibleLite(level, g)) return { growth: g, feasibleByRepair: true, repaired: false };
-      var order = ['MS', 'HI', 'PN'];
+      var order = ['MS', 'HI', 'PN'], years = [3, 2, 1, 0];   // cut MS first; within a product cut 2030 first, then 2029...
       for (var oi = 0; oi < order.length; oi++) {
-        var c = order[oi]; g[c] = GMIN[c];
-        if (_detFeasibleLite(level, g)) {                 // feasible at this product's floor -> bisect up for the highest feasible growth
-          var lo = GMIN[c], hi = TGT[c];
-          for (var b = 0; b < 14; b++) { var mid = (lo + hi) / 2; g[c] = mid; if (_detFeasibleLite(level, g)) lo = mid; else hi = mid; }
-          g[c] = lo; return { growth: g, feasibleByRepair: true, repaired: true };
+        var c = order[oi];
+        for (var yj = 0; yj < years.length; yj++) {
+          var yi = years[yj], drawn = g[c][yi];
+          g[c][yi] = GMIN[c];                               // try this year fully cut to the floor
+          if (_detFeasibleLite(level, g)) {                 // floor for this year suffices -> bisect it back up for the highest feasible rate
+            var lo = GMIN[c], hi = drawn;
+            for (var b = 0; b < 14; b++) { var mid = (lo + hi) / 2; g[c][yi] = mid; if (_detFeasibleLite(level, g)) lo = mid; else hi = mid; }
+            g[c][yi] = lo; return { growth: g, feasibleByRepair: true, repaired: true };
+          }
+          // else leave this year at the floor and cut the next-earlier year (then the next product)
         }
-        // else leave product c at its floor and cut the next product
       }
-      return { growth: g, feasibleByRepair: false, repaired: true };   // even all products at floor is infeasible
+      return { growth: g, feasibleByRepair: false, repaired: true };   // even all years of all products at floor is infeasible
     }
     // Shared frontier sweep — one source of compute truth for the viewer Web Worker, the viewer
     // main-thread fallback, and the headless runner. Async so the fallback can yield via opts.onYield
@@ -418,17 +426,21 @@
       opts = opts || {};
       var n = S.nScen, ns = S.nStoch, slow = S.slowMode;
       setSeed(S.seed != null ? S.seed : STOCH_SEED);
-      // Multi-year decision: sample only the per-product 2026 starting LEVEL (S.bounds). Growth STARTS
-      // at each product's target (S.growthTarget) and is cut ONLY to reach feasibility (repairGrowth):
-      // MS first (it drives RBC) toward its lower bound S.growthMin.MS (negative allowed), then HI, then
-      // PN. So every plan grows toward target and only goes down when constraints (chiefly the RBC floor
-      // C1) require it; an infeasible draw is repaired before it's recorded. 2031-2035 held flat at 2030.
+      // Multi-year decision (15 LHS dims): per product the 2026 starting LEVEL (S.bounds) PLUS a growth
+      // rate for EACH year 2027-2030 drawn uniformly within [growthMin, growthTarget] (so paths can rise-
+      // then-fall / front-load). Infeasible draws are then REPAIRED (repairGrowth: cut MS first, then HI,
+      // then PN; within a product cut the latest year first) so the recorded plan stays feasible -- chiefly
+      // against the RBC floor C1. 2031-2035 issuance is held flat at the 2030 level. RNG order is
+      // levelA(3) -> grA(12) -> BANK, all prebuilt so checkpoint/resume reproduces the identical set.
+      var TGT = S.growthTarget || { MS: 0, PN: 0, HI: 0 }, GMIN = S.growthMin || { MS: 0, PN: 0, HI: 0 };
       var levelA = { MS: lhs(n, S.bounds.MS[0], S.bounds.MS[1]), PN: lhs(n, S.bounds.PN[0], S.bounds.PN[1]), HI: lhs(n, S.bounds.HI[0], S.bounds.HI[1]) };
+      var grA = {}; PRODS.forEach(function (c) { grA[c] = [0, 1, 2, 3].map(function () { return lhs(n, GMIN[c], TGT[c]); }); });
       var BANK = buildShockBank(ns), _yt = _now();
       var results = (opts.startResults && opts.startResults.length) ? opts.startResults.slice(0, n) : [];
       for (var i = results.length; i < n; i++) {
         var level = { MS: levelA.MS[i], PN: levelA.PN[i], HI: levelA.HI[i] };
-        var rep = repairGrowth(level), growth = rep.growth;
+        var gdraw = { MS: grA.MS.map(function (a) { return a[i]; }), PN: grA.PN.map(function (a) { return a[i]; }), HI: grA.HI.map(function (a) { return a[i]; }) };
+        var rep = repairGrowth(level, gdraw), growth = rep.growth;
         var salesPath = mkPath(level, growth), u = _U;
         var sales = { MS: level.MS, PN: level.PN, HI: level.HI };   // 2026 starting mix (display)
         var det = buildScen(salesPath, u, u);

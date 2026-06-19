@@ -122,24 +122,23 @@ across **2026–2030**, and the objective is the **whole-program PVDE** (PV of d
 across all new-business cohorts issued 2026–2030). This replaced the old single-year (2026-only)
 optimization with its fixed forward-growth schedule.
 
-- **Decision variable (LHS).** Only the per-product **2026 starting level** (`S.bounds`) is sampled
-  (3 dims). Growth is **target-seeking, not sampled**: each product starts at its **target**
-  (`S.growthTarget[c]`, constant 2027–2030) and is cut only by the repair below. 2031–2035 issuance is
-  **held flat at the 2030 level**. `src/frontier.js → runSweep` builds the path via `mkPath` (the
-  existing `mkScalars` array branch — no growth math there).
+- **Decision variables (LHS, 15 dims).** Per product: the **2026 starting level** (`S.bounds`, 3 dims)
+  plus a **growth rate for each year 2027–2030** drawn **uniformly within `[S.growthMin[c],
+  S.growthTarget[c]]`** (12 dims) — so a path can rise-then-fall or front-load. 2031–2035 issuance is
+  **held flat at the 2030 level**. `src/frontier.js → runSweep` builds the per-year sales path via
+  `mkPath` (the existing `mkScalars` array branch — no growth math there). RNG order is
+  `levelA(3) → grA(12) → BANK`, all prebuilt so checkpoint/resume + `export-scalars` reproduce the set.
 - **Objective = 2026–2030 program PVDE.** `buildScen`'s `recNB` values new business with `iyMax:2030`
   (cohorts issued ≤2030), so `portNPV`/`portIRR` ARE the program. The fast stochastic path
   (`stochMetrics`) recalcs only the program cohorts (`S.evProg`). `vnb.js` has a strictly **additive**
   `iyMax` filter — existing callers pass nothing, so §1 is byte-identical.
-- **Grow to target, cut only for feasibility (`repairGrowth`).** Every plan starts each product at its
-  target growth. If infeasible, growth is cut **MS first** (it drives RBC) toward its min
-  (`S.growthMin.MS`, negative allowed) by bisection for the highest feasible rate; only if MS is at its
-  floor and still infeasible does it cut HI then PN; if even all-at-floor fails, the scenario is
-  infeasible. The repair targets the deterministic constraints via a **lite** `buildScen` (C1/C2/C3 —
-  the per-cohort C5–C8 and stochastic tails are evaluated once on the final scenario). **C1 (min RBC
-  2026–2030 ≥ 4.0) is the binding constraint that drives the cut.** Verified: the top frontier plan
-  sits at minRBC ≈ 4.0; low-MS-level plans grow MS at the full 5% target; high-MS-level plans get MS
-  growth cut (even negative) while PN/HI stay at their 10% target.
+- **Repair infeasible draws (`repairGrowth`).** A drawn path that violates the deterministic capital
+  constraints is repaired: growth is trimmed **MS first** (it drives RBC), then HI, then PN; **within a
+  product the latest year (2030) is cut first**, toward `S.growthMin` (negative allowed for MS), bisecting
+  the binding year for the highest feasible rate — so repaired plans **front-load**. If even all years of
+  all products at their floor is infeasible, the scenario is marked infeasible. The repair targets a
+  **lite** `buildScen` (C1/C2/C3); per-cohort C5–C8 and stochastic tails are evaluated once on the final
+  scenario. **C1 (min RBC 2026–2030 ≥ 4.0) is the binding constraint that drives the cut.**
 - **C5–C8 are PER COHORT.** Each issue year 2026–2030's cohort, on its own timeline, must pass the
   **original** single-cohort thresholds: DE>0 by yr 4, cumDE>0 by yr 10, min cumDE ≥ **−$180M**,
   year-1 DE ≥ **−$150M**. `evalCons` fails (per rule) naming the worst issue year; `buildScen` provides
@@ -148,17 +147,19 @@ optimization with its fixed forward-growth schedule.
 - **Baseline is still sacred.** `frontier.js → computeBaseline` **never reads `S.growthTarget`**; no
   growth setting can move any §1 number (`node runner/validate.js` stays green — verified).
 
-**Default growth (decimals; Configuration tab, next to the bounds):**
+**Default per-year growth band (decimals; Configuration tab, next to the bounds) — each year 2027–2030 is
+drawn uniformly within [min, max]:**
 
-| Product | Target %/yr | Min %/yr (repair floor) |
+| Product | Max %/yr (target) | Min %/yr |
 |---|---|---|
 | Medicare Supplement (MS) | +5% | −12% |
 | Preneed (PN) | +10% | 0% |
 | Hospital Indemnity (HI) | +10% | 0% |
 
-**Verified (100×100 default, ~2.6 min Node):** ~73 feasible / ~49 frontier; frontier median 2030/2026
-≈ **MS 1.22, PN 1.46, HI 1.46** (all three grow — MS toward its 5% target, PN/HI at 10%, cut back only
-where RBC binds). `node runner/validate.js` (§1) and `node runner/reins-tieout.js` stay green.
+**Verified (headless default run):** paths vary year-to-year (many non-monotonic; PN/HI no longer pinned
+flat at 10%), repaired plans front-load (latest-year growth cut first), MS is pulled down where RBC binds,
+and the frontier is non-empty. `node runner/validate.js` (§1) and `node runner/reins-tieout.js` stay green
+(engine untouched). The value-maximizing frontier favors high growth where it is profitable and feasible.
 
 ---
 

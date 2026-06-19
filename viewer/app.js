@@ -41,7 +41,7 @@ S.seed=F.STOCH_SEED;   // default RNG seed (overridable via the Config seed inpu
 function scenSales(scen){return (scen&&scen.salesPath)||(scen&&scen.salesTable)||(scen&&scen.sales);}
 // Display the 2026→2030 path: "319→410" when the product grows/shrinks, else just the 2026 level.
 function pathCell(r,c,dec){var s0=r&&r.sales&&r.sales[c];var sv=fmt(s0,dec);var p=r&&r.salesPath&&r.salesPath[c];if(p&&p[4]!=null&&isFinite(p[4])&&Math.abs(p[4]-s0)>=0.5)return sv+'→'+fmt(p[4],dec);return sv;}
-// drawdown (most-negative cumulative 2026-issue DE) from a buildScen cumDE26 map — matches stochMetrics' dd
+// drawdown (most-negative cumulative DE) from a buildScen cumDE map — matches stochMetrics' program dd
 function ddFromCum(cum){var d=0;for(var y=2026;y<=2055;y++){var v=cum[y];if(v!=null&&v<d)d=v;}return d;}
 var lhs=F.lhs,buildShockBank=F.buildShockBank,shockFromBank=F.shockFromBank,
     pctile=F.pctile,stddev=F.stddev,cteLow=F.cteLow,semidevBelow=F.semidevBelow,
@@ -65,7 +65,7 @@ S.growthMin=defaultGrowthMin();
 function refreshGrowthUI(){
   var shortName={MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'};
   var ist='width:64px;font-size:11px;padding:2px 4px;font-family:var(--mono);border:1px solid var(--line);border-radius:4px;text-align:right';
-  var h='<thead><tr><th>Product</th><th>Target growth %/yr</th><th>Min growth %/yr (floor)</th></tr></thead><tbody>';
+  var h='<thead><tr><th>Product</th><th>Max growth %/yr (target)</th><th>Min growth %/yr</th></tr></thead><tbody>';
   PRODS.forEach(function(c){
     var t=(S.growthTarget&&S.growthTarget[c])||0, mn=(S.growthMin&&S.growthMin[c])||0;
     h+='<tr><td>'+shortName[c]+'</td>'+
@@ -347,7 +347,7 @@ function mainThreadCallbacks(fill,st,label,sig,resume,n){
 }
 function runSweepInWorker(fill,st,sig,resume,resumedFrom){
   return new Promise(function(resolve,reject){
-    var w=new Worker('worker.js?v=221');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
+    var w=new Worker('worker.js?v=222');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
     var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growthTarget:S.growthTarget,growthMin:S.growthMin,surplusNote:S.surplusNote,reinsurance:S.reinsurance,
       seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
       claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
@@ -973,7 +973,7 @@ function renderEvidence(){
   if(!scen){body.innerHTML='<p class="hint">Select a run scenario (after running the frontier) to see its constraint evidence. The baseline has no scenario sales applied.</p>';return;}
   var ss=sensScalars(scen,sensId);
   var m=buildScen(scenSales(scen),ss.claims,ss.lapse,ss.nier);
-  // Stochastic IRRs for C4 (use the scenario's stored stochastic 2026-issue IRRs)
+  // Stochastic IRRs for C4 (use the scenario's stored stochastic 2026-2030 program IRRs)
   var stochIRRs=scen.stochIRRs||[];
   var c=S.cons;
   function card(num,title,pass,rows,note,extra){
@@ -1089,7 +1089,7 @@ function renderEvidence(){
   }
 
   // Summary banner
-  var allPass=[c1pass,c2pass,c3pass,c4pass,c5pass,c6pass,cfpass,d1pass,rtPass];
+  var allPass=[c1pass,c2pass,c3pass,c4pass,c5bad===null,c6bad===null,c7bad===null,c8bad===null,rtPass];
   var nFail=allPass.filter(function(x){return !x;}).length;
   var banner='<div style="padding:12px 16px;border-radius:8px;margin-bottom:16px;font-weight:650;'+(nFail===0?'background:#e6f5ea;color:#1c7a3d':'background:#fdeaea;color:#b3261e')+'">'+(nFail===0?'✓ Scenario #'+scen.id+' is FEASIBLE — all constraints satisfied':'✗ Scenario #'+scen.id+' is INFEASIBLE — '+nFail+' constraint'+(nFail>1?'s':'')+' failed')+'</div>';
 

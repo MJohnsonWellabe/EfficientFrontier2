@@ -39,17 +39,20 @@ function main() {
   var F = FRONTIER.create(S, EFENG);
   F.computeBaseline();
 
-  // reproduce the EXACT sampling order of frontier.js runSweep: per-product 2026 level (MS,PN,HI),
-  // then the shock bank. Growth is not sampled — it starts at target and is repaired down per scenario
-  // (F.repairGrowth), so the sales path matches the frontier's scenario at this lhsIndex.
+  // reproduce the EXACT sampling order of frontier.js runSweep: per-product 2026 level (MS,PN,HI), then
+  // the 12-dim per-year growth LHS (each product x 2027-2030), then the shock bank. The drawn growth is
+  // then repaired (F.repairGrowth) so the sales path matches the frontier's scenario at this lhsIndex.
   F.setSeed(F.STOCH_SEED);
+  var TGT = S.growthTarget || { MS: 0, PN: 0, HI: 0 }, GMIN = S.growthMin || { MS: 0, PN: 0, HI: 0 };
   var levelA = { MS: F.lhs(S.nScen, S.bounds.MS[0], S.bounds.MS[1]), PN: F.lhs(S.nScen, S.bounds.PN[0], S.bounds.PN[1]), HI: F.lhs(S.nScen, S.bounds.HI[0], S.bounds.HI[1]) };
+  var grA = {}; PRODS.forEach(function (c) { grA[c] = [0, 1, 2, 3].map(function () { return F.lhs(S.nScen, GMIN[c], TGT[c]); }); });
   var BANK = F.buildShockBank(S.nStoch);
   if (lhsI < 0 || lhsI >= levelA.MS.length) throw new Error('lhsIndex out of range 0..' + (levelA.MS.length - 1));
   if (stoI < 0 || stoI >= BANK.length) throw new Error('stochIndex out of range 0..' + (BANK.length - 1));
 
   var level = { MS: levelA.MS[lhsI], PN: levelA.PN[lhsI], HI: levelA.HI[lhsI] };
-  var sales = F.mkPath(level, F.repairGrowth(level).growth);
+  var gdraw = { MS: grA.MS.map(function (a) { return a[lhsI]; }), PN: grA.PN.map(function (a) { return a[lhsI]; }), HI: grA.HI.map(function (a) { return a[lhsI]; }) };
+  var sales = F.mkPath(level, F.repairGrowth(level, gdraw).growth);
   var b = BANK[stoI];
 
   // ---- decompose the draw into systematic / process, matching shockFromBank exactly ----
