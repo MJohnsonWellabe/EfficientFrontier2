@@ -9,21 +9,23 @@ var PRODS = ['MS', 'PN', 'HI'];
 var PNAME = { MS: 'Medicare Supplement', PN: 'Preneed', HI: 'Hospital Indemnity' };
 var SALES_YEARS = [2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035];
 
-// Per-product annual sales-GROWTH RANGE (decimals), applied year-over-year 2027..2030.
-// This replaces the old fixed per-year growth schedule: the multi-year frontier samples a
-// growth rate per product PER YEAR from within each product's [lo,hi] range (LHS), so the
-// plan chooses how fast each product grows. 2026 is the sampled starting level (S.bounds);
-// 2031..2035 issuance is held flat at the 2030 level (outside the 2026-2030 program/RBC window).
-// Defaults span the old schedule (MS could fall 12% or grow 10%; PN 0-10%; HI 0-5%).
-function defaultGrowthRange() {
-  return { MS: [-0.12, 0.10], PN: [0.0, 0.10], HI: [0.0, 0.05] };
+// Per-product annual sales-GROWTH TARGET and MIN (decimals), applied year-over-year 2027..2030.
+// The multi-year frontier samples only the 2026 starting level (S.bounds); growth STARTS at the
+// target for every product and is cut ONLY to reach feasibility (frontier.js repairGrowth): MS first
+// (it drives RBC) down toward growthMin.MS (negative allowed), then HI, then PN. So plans grow toward
+// target and only go down when constraints require it. 2031..2035 held flat at the 2030 level.
+function defaultGrowthTarget() {
+  return { MS: 0.05, PN: 0.10, HI: 0.10 };
 }
-function zeroGrowthRange() {
-  return { MS: [0.0, 0.0], PN: [0.0, 0.0], HI: [0.0, 0.0] };   // flat: every product holds its 2026 level
+function defaultGrowthMin() {
+  return { MS: -0.12, PN: 0.0, HI: 0.0 };   // floor growth can be cut to for feasibility (MS may decline)
+}
+function zeroGrowthTarget() {
+  return { MS: 0.0, PN: 0.0, HI: 0.0 };      // flat: every product holds its 2026 level (no growth)
 }
 
 // Build the full headless state S from the data/ files + engine, matching the viewer.
-function buildState(EFENG, dataDir, growthRange) {
+function buildState(EFENG, dataDir, growthTarget) {
   var ev = EFENG.loadEV(fs.readFileSync(path.join(dataDir, 'InputEV.csv'), 'utf8'));
   var ts = EFENG.loadTS(fs.readFileSync(path.join(dataDir, 'InputTS.csv'), 'utf8'));
   var surplus = EFENG.loadSurplus(fs.readFileSync(path.join(dataDir, 'InputSurplus.csv'), 'utf8'));
@@ -43,11 +45,12 @@ function buildState(EFENG, dataDir, growthRange) {
   return {
     ev: ev, ts: ts, surplus: surplus, params: params, years: years,
     baseline: null, origLIF: null, ev2026: null, evProg: null,
-    bounds: { MS: [250, 350], PN: [200, 240], HI: [18, 25] },   // 2026 starting-level LHS range per product
+    bounds: { MS: [150, 400], PN: [150, 270], HI: [15, 25] },   // 2026 starting-level LHS range per product
     hurdles: { MS: 0.12, PN: 0.10, HI: 0.10 },
     origSales: origSales,
-    growthRange: growthRange || zeroGrowthRange(),   // per-product annual growth [lo,hi], sampled per year 2027-2030
-    progYears: [2026, 2027, 2028, 2029, 2030],       // the multi-year new-business program horizon (objective + decision)
+    growthTarget: growthTarget || zeroGrowthTarget(),   // per-product target annual growth (start; repaired down for feasibility)
+    growthMin: defaultGrowthMin(),                      // per-product floor growth (repair cuts toward this; MS may go negative)
+    progYears: [2026, 2027, 2028, 2029, 2030],          // the multi-year new-business program horizon (objective + decision)
     claimsSD: { MS: 0.04, PN: 0.035, HI: 0.055 },
     claimsProcSD: { MS: 0.03, PN: 0.02, HI: 0.04 },
     lapseSD: { MS: 0.065, PN: 0.045, HI: 0.07 },
@@ -58,12 +61,11 @@ function buildState(EFENG, dataDir, growthRange) {
     nierSD: { MS: 0, PN: 0.0035, HI: 0 },
     nierProcSD: { MS: 0, PN: 0.0015, HI: 0 },
     nScen: 100, nStoch: 100, slowMode: false,
-    // Constraints scoped to the 2026-2030 new-business PROGRAM. deYr/cumDEFloor/de1Floor are
-    // program-scale (a 5-year issuance program carries ~5x the early strain of a single cohort and
-    // turns cash-positive in 2031): DE>0 by 2032 (deYr 7), cumDE trough floor -$650M, year-1 floor
-    // -$175M. This leaves C1 (min RBC 2026-2030 >= 4.0) as the binding constraint that drives the
-    // "only grow down when RBC requires it" behavior. All adjustable on the Config tab.
-    cons: { rbcFloor: 4.0, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.15, deYr: 7, cumDeYr: 10, cumDEFloor: -650, de1Floor: -175, rbcTailX: 3.5, rbcTailY: 0.25 },
+    // Constraints. C5-C8 apply the ORIGINAL single-cohort thresholds to EACH issue year 2026-2030
+    // independently (frontier.js evalCons): DE>0 by yr 4, cumDE>0 by yr 10, min cumDE >= -$180M,
+    // year-1 DE >= -$150M (per cohort, on its own timeline). C1 (min RBC 2026-2030 >= 4.0) is the
+    // binding constraint that drives the growth repair ("grow to target, cut only for feasibility").
+    cons: { rbcFloor: 4.0, tacChgFloor: -0.12, irr3on: true, irrA: 0.08, irrB: 0.15, deYr: 4, cumDeYr: 10, cumDEFloor: -180, de1Floor: -150, rbcTailX: 3.5, rbcTailY: 0.25 },
     surplusNote: { on: true, amount: 150, tenor: 10, rate: 0.09, fees: 0.03, nierSN: 0.04, startDate: '2026-06-30' },
     // Reinsurance — MS quota share, ON by default at 10%/yr. Mirrors viewer S init / Config-tab Reinsurance section.
     // cede: retained-share cession % by MS issue year; lagYears: 1-yr cession lag; commUpfront: $M
@@ -78,4 +80,4 @@ function buildState(EFENG, dataDir, growthRange) {
   };
 }
 
-module.exports = { buildState: buildState, defaultGrowthRange: defaultGrowthRange, zeroGrowthRange: zeroGrowthRange, PRODS: PRODS, SALES_YEARS: SALES_YEARS };
+module.exports = { buildState: buildState, defaultGrowthTarget: defaultGrowthTarget, defaultGrowthMin: defaultGrowthMin, zeroGrowthTarget: zeroGrowthTarget, PRODS: PRODS, SALES_YEARS: SALES_YEARS };

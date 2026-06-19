@@ -22,8 +22,8 @@ function runFrontier(S, F) { return F.runSweep(); }
 
 async function main() {
   var mode = (process.argv[2] || 'zero').toLowerCase();
-  var growthRange = (mode === 'default') ? D.defaultGrowthRange() : D.zeroGrowthRange();
-  var S = D.buildState(EFENG, DATA, growthRange);
+  var growthTarget = (mode === 'default') ? D.defaultGrowthTarget() : D.zeroGrowthTarget();
+  var S = D.buildState(EFENG, DATA, growthTarget);
   if (process.argv.indexOf('slow') >= 0) S.slowMode = true;   // Slow mode: per-draw trough-RBC tail
   var F = FRONTIER.create(S, EFENG);
   F.computeBaseline();
@@ -33,7 +33,7 @@ async function main() {
     meta: {
       mode: mode, generatedAt: new Date().toISOString(),
       seed: F.STOCH_SEED, nScen: S.nScen, nStoch: S.nStoch,
-      bounds: S.bounds, growthRange: S.growthRange, progYears: S.progYears
+      bounds: S.bounds, growthTarget: S.growthTarget, growthMin: S.growthMin, progYears: S.progYears
     },
     baseline: {
       vnb: {
@@ -46,7 +46,7 @@ async function main() {
     },
     scenarios: results.map(function (r) {
       return {
-        id: r.id, sales: r.sales, salesPath: r.salesPath,   // sales = 2026 starting mix; salesPath = full 2026-2035 path
+        id: r.id, sales: r.sales, salesPath: r.salesPath, growth: r.growth, repaired: r.repaired,   // sales = 2026 mix; salesPath = full path; growth = per-product rate (repaired)
         portNPV: r.portNPV, portIRR: r.portIRR,   // 2026-2030 new-business program PVDE/IRR (the objective)
         npv26: r.npv26, irr26: r.irr26, wtdIRR: r.wtdIRR,
         risk: r.risk, riskSD: r.riskSD, cte90: r.cte90, ddWorst: r.ddWorst, minRBC: r.minRBC,

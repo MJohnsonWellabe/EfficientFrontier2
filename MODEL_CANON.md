@@ -71,21 +71,21 @@ Where the source workbook was genuinely wrong, you corrected it. These correctio
 
 ## 5. Configuration defaults
 
-- **Sales bounds (2026 starting level):** MS `250–350`, PN `200–240`, HI `18–25` (updated 2026-06-13)
-- **Sales growth ranges (per product, %/yr, sampled per year 2027–2030):** MS `−12%…+10%`, PN `0%…+10%`, HI `0%…+5%`. See §8 — multi-year optimization (objective = 2026–2030 program PVDE).
+- **Sales bounds (2026 starting level):** MS `150–400`, PN `150–270`, HI `15–25` (updated 2026-06-19; widened so the RBC-binding tradeoff is visible)
+- **Sales growth — target + min (per product, %/yr):** target MS `5%`, PN `10%`, HI `10%`; min (repair floor) MS `−12%`, PN `0%`, HI `0%`. Each plan grows at the target and is cut only to stay feasible (MS first, negative allowed). See §8.
 - **Hurdle rates:** MS `12%`, PN `10%`, HI `10%`
-- **Stochastic grid:** `100` LHS scenarios × `100` stochastic runs (15 decision dimensions now; bump `nScen` for denser coverage)
-- **Constraints (Configuration-tab defaults; C3–C8 scoped to the 2026–2030 program — see §8):**
-  - C1 — Min RBC ratio 2026–2030 ≥ **4.0×** (the binding capital constraint)
+- **Stochastic grid:** `100` LHS scenarios (2026 level only; growth is target-seeking + repaired, not sampled) × `100` stochastic runs
+- **Constraints (Configuration-tab defaults; C5–C8 are PER-COHORT — each issue year 2026–2030, see §8):**
+  - C1 — Min RBC ratio 2026–2030 ≥ **4.0×** (the binding capital constraint; drives the growth repair)
   - C2 — Min ΔTAC / BOP TAC ≥ **−12%** (every year)
-  - C3 — program IRR ≥ sales-weighted hurdle (**on**)
+  - C3 — 2026–2030 program IRR ≥ sales-weighted hurdle (**on**)
   - C4 — program IRR tail: P(IRR < **8%**) ≤ **15%**
-  - C5 — program DE > 0 by **yr 7** (2032)   *(was yr 4; a 5-year program turns cash-positive ~2031)*
-  - C6 — program cumulative DE > 0 by **yr 10** (2035)
-  - C7 — CumDE floor ≥ **−$650M**   *(was −$180M; program-scale trough)*
-  - C8 — Year-1 DE floor ≥ **−$175M**   *(2026 cohort only — single-year guardrail)*
+  - C5 — **each** cohort DE > 0 by its **yr 4**
+  - C6 — **each** cohort cumulative DE > 0 by its **yr 10**
+  - C7 — **each** cohort min cumulative DE ≥ **−$180M**
+  - C8 — **each** cohort year-1 (issue-year) DE ≥ **−$150M**
   - C9 — Trough-RBC tail (**Slow mode only**): P(min RBC 2026–2030 < **350%**) ≤ **25%** across stochastic draws — the stochastic counterpart to C1, full-book/note-adjusted.
-- **Run mode:** **Fast** (default) skips the trough-RBC tail (per-draw program metrics, longer than the old 2026-only path since it values 5 cohorts); **Slow** runs a full RBC recompute per stochastic draw to evaluate the trough-RBC tail.
+- **Run mode:** **Fast** (default, ~3–5 min at 100×100 — values each year's program + the per-scenario growth-repair bisection) skips the trough-RBC tail; **Slow** (~15–25 min) runs a full RBC recompute per stochastic draw.
 - **Surplus note:** default **ON**, **$150M**, 10-yr tenor, 9% interest (quarterly coupon), 3% upfront fee, 4% investment income on proceeds, 2026-06-30 start.
   Because the note flows through TAC, the viewer's **displayed** baseline RBC is note-adjusted (above the
   §1 figures). **§1 RBC remains the no-note engine anchor** verified by `node runner/validate.js`.
@@ -122,38 +122,43 @@ across **2026–2030**, and the objective is the **whole-program PVDE** (PV of d
 across all new-business cohorts issued 2026–2030). This replaced the old single-year (2026-only)
 optimization with its fixed forward-growth schedule.
 
-- **Decision variables (LHS).** Per product: the **2026 starting level** (`S.bounds`) plus a **growth
-  rate for each year 2027–2030** drawn from that product's single **`S.growthRange[c] = [lo,hi]`**
-  (one range per product, replacing the old per-year growth table). 3 levels + 3×4 growth = **15
-  sampled dimensions**. 2031–2035 issuance is **held flat at the 2030 level** (outside the objective
-  and the RBC window). `src/frontier.js → runSweep` builds the per-year sales **arrays** and passes
-  them through the existing `mkScalars` array branch (no growth math there).
-- **Objective = 2026–2030 program PVDE.** `buildScen`'s `recNB` values new business with
-  `iyMax:2030` (cohorts issued ≤2030), so `portNPV`/`portIRR` ARE the program. The fast stochastic
-  path (`stochMetrics`) recalcs only the program cohorts (`S.evProg`). `vnb.js` gained one strictly
-  **additive** `iyMax` filter — existing callers pass nothing, so §1 is byte-identical.
-- **"Only grow down when RBC requires it" — emergent, not a hard rule.** Growth draws may be negative;
-  the value-maximizing frontier + the hard **RBC floor (C1, min RBC 2026–2030 ≥ 4.0)** keep declines
-  off the frontier unless they relieve a binding RBC constraint. Verified: the top frontier plan sits
-  at minRBC ≈ 4.0 (capital-bound), and the lone infeasible scenario fails **RBC_FLOOR alone**.
-- **Constraints C3–C8 scoped to the program** (`evalCons` reads `portIRR` / `de` / `cumDE`). Because a
-  5-year issuance program carries ~5× a single cohort's early strain and turns cash-positive ~2031,
-  the program-scale defaults are **deYr 7 (DE>0 by 2032)**, **cumDEFloor −$650M**, **de1Floor −$175M**
-  (C8 stays a 2026-only guardrail — only the 2026 cohort issues in 2026). All adjustable on the Config tab.
-- **Baseline is still sacred.** `frontier.js → computeBaseline` **never reads `S.growthRange`**; no
+- **Decision variable (LHS).** Only the per-product **2026 starting level** (`S.bounds`) is sampled
+  (3 dims). Growth is **target-seeking, not sampled**: each product starts at its **target**
+  (`S.growthTarget[c]`, constant 2027–2030) and is cut only by the repair below. 2031–2035 issuance is
+  **held flat at the 2030 level**. `src/frontier.js → runSweep` builds the path via `mkPath` (the
+  existing `mkScalars` array branch — no growth math there).
+- **Objective = 2026–2030 program PVDE.** `buildScen`'s `recNB` values new business with `iyMax:2030`
+  (cohorts issued ≤2030), so `portNPV`/`portIRR` ARE the program. The fast stochastic path
+  (`stochMetrics`) recalcs only the program cohorts (`S.evProg`). `vnb.js` has a strictly **additive**
+  `iyMax` filter — existing callers pass nothing, so §1 is byte-identical.
+- **Grow to target, cut only for feasibility (`repairGrowth`).** Every plan starts each product at its
+  target growth. If infeasible, growth is cut **MS first** (it drives RBC) toward its min
+  (`S.growthMin.MS`, negative allowed) by bisection for the highest feasible rate; only if MS is at its
+  floor and still infeasible does it cut HI then PN; if even all-at-floor fails, the scenario is
+  infeasible. The repair targets the deterministic constraints via a **lite** `buildScen` (C1/C2/C3 —
+  the per-cohort C5–C8 and stochastic tails are evaluated once on the final scenario). **C1 (min RBC
+  2026–2030 ≥ 4.0) is the binding constraint that drives the cut.** Verified: the top frontier plan
+  sits at minRBC ≈ 4.0; low-MS-level plans grow MS at the full 5% target; high-MS-level plans get MS
+  growth cut (even negative) while PN/HI stay at their 10% target.
+- **C5–C8 are PER COHORT.** Each issue year 2026–2030's cohort, on its own timeline, must pass the
+  **original** single-cohort thresholds: DE>0 by yr 4, cumDE>0 by yr 10, min cumDE ≥ **−$180M**,
+  year-1 DE ≥ **−$150M**. `evalCons` fails (per rule) naming the worst issue year; `buildScen` provides
+  the per-cohort streams (`cohorts[iy].de/.cumDE`). Note: at high 2026 MS levels the **2026 cohort
+  itself** can breach C7/C8 — a level problem growth-cutting can't fix, so those plans are infeasible.
+- **Baseline is still sacred.** `frontier.js → computeBaseline` **never reads `S.growthTarget`**; no
   growth setting can move any §1 number (`node runner/validate.js` stays green — verified).
 
-**Default growth ranges** (decimals; Configuration tab, per product — span the prior fixed schedule):
+**Default growth (decimals; Configuration tab, next to the bounds):**
 
-| Product | Min growth %/yr | Max growth %/yr |
+| Product | Target %/yr | Min %/yr (repair floor) |
 |---|---|---|
-| Medicare Supplement (MS) | −12% | +10% |
-| Preneed (PN) | 0% | +10% |
-| Hospital Indemnity (HI) | 0% | +5% |
+| Medicare Supplement (MS) | +5% | −12% |
+| Preneed (PN) | +10% | 0% |
+| Hospital Indemnity (HI) | +10% | 0% |
 
-**Cross-foot (verified).** For a flat mid-level plan, `det.portNPV` = Σ per-issue-year (2026–2030)
-cohort PVDE + treaty-commission PV (578.99 = 515.95 + 63.05). With growth range `[0,0]` every product
-holds its 2026 level flat. A 100×100 default run gives ~99 feasible / ~38 frontier.
+**Verified (100×100 default, ~2.6 min Node):** ~73 feasible / ~49 frontier; frontier median 2030/2026
+≈ **MS 1.22, PN 1.46, HI 1.46** (all three grow — MS toward its 5% target, PN/HI at 10%, cut back only
+where RBC binds). `node runner/validate.js` (§1) and `node runner/reins-tieout.js` stay green.
 
 ---
 

@@ -33,27 +33,23 @@ function main() {
   var lhsI = parseInt(process.argv[2] != null ? process.argv[2] : '0', 10);
   var stoI = parseInt(process.argv[3] != null ? process.argv[3] : '0', 10);
   var mode = (process.argv[4] || 'default').toLowerCase();
-  var growthRange = (mode === 'zero') ? D.zeroGrowthRange() : D.defaultGrowthRange();
+  var growthTarget = (mode === 'zero') ? D.zeroGrowthTarget() : D.defaultGrowthTarget();
 
-  var S = D.buildState(EFENG, DATA, growthRange);
+  var S = D.buildState(EFENG, DATA, growthTarget);
   var F = FRONTIER.create(S, EFENG);
   F.computeBaseline();
 
-  // reproduce the EXACT multi-year sampling order of frontier.js runSweep: per-product 2026 level
-  // (MS,PN,HI), then per-product growth draws for 2027-2030, then the shock bank. Build the per-year
-  // sales path (2031-2035 held flat at 2030) — the scenario the frontier evaluated at this lhsIndex.
+  // reproduce the EXACT sampling order of frontier.js runSweep: per-product 2026 level (MS,PN,HI),
+  // then the shock bank. Growth is not sampled — it starts at target and is repaired down per scenario
+  // (F.repairGrowth), so the sales path matches the frontier's scenario at this lhsIndex.
   F.setSeed(F.STOCH_SEED);
-  var GR = S.growthRange || { MS: [0, 0], PN: [0, 0], HI: [0, 0] };
-  var PROG_GY = [2027, 2028, 2029, 2030];
   var levelA = { MS: F.lhs(S.nScen, S.bounds.MS[0], S.bounds.MS[1]), PN: F.lhs(S.nScen, S.bounds.PN[0], S.bounds.PN[1]), HI: F.lhs(S.nScen, S.bounds.HI[0], S.bounds.HI[1]) };
-  var grA = {}; PRODS.forEach(function (c) { grA[c] = PROG_GY.map(function () { return F.lhs(S.nScen, GR[c][0], GR[c][1]); }); });
-  var nYears = (S.params.scalars.years || []).length || 10;
-  function pathFor(c, i) { var arr = [levelA[c][i]], prev = arr[0]; for (var yi = 0; yi < PROG_GY.length; yi++) { prev = prev * (1 + grA[c][yi][i]); arr.push(prev); } while (arr.length < nYears) arr.push(arr[PROG_GY.length]); return arr; }
   var BANK = F.buildShockBank(S.nStoch);
   if (lhsI < 0 || lhsI >= levelA.MS.length) throw new Error('lhsIndex out of range 0..' + (levelA.MS.length - 1));
   if (stoI < 0 || stoI >= BANK.length) throw new Error('stochIndex out of range 0..' + (BANK.length - 1));
 
-  var sales = { MS: pathFor('MS', lhsI), PN: pathFor('PN', lhsI), HI: pathFor('HI', lhsI) };
+  var level = { MS: levelA.MS[lhsI], PN: levelA.PN[lhsI], HI: levelA.HI[lhsI] };
+  var sales = F.mkPath(level, F.repairGrowth(level).growth);
   var b = BANK[stoI];
 
   // ---- decompose the draw into systematic / process, matching shockFromBank exactly ----

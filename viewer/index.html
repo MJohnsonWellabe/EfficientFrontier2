@@ -188,11 +188,6 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
   <div style="margin-top:16px;padding:12px 14px;background:#f5f8fa;border-radius:7px">
     <div class="hint" style="margin-bottom:10px;font-weight:600">Original sales anchor ($M/yr) — 2026–2035</div>
     <div class="hscroll"><table class="atbl" id="origSalesTbl"></table></div>
-    <div id="growthSection" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
-      <div class="hint" style="margin-bottom:6px;font-weight:600">Annual sales growth range (%/yr) per product <span style="font-weight:400;color:var(--muted)">· the multi-year frontier samples a growth rate per year 2027–2030 within each product's [min,max]; 2031–2035 held flat at the 2030 level; scenario draws only, never the baseline</span></div>
-      <div class="hscroll"><table class="atbl" id="growthTbl"></table></div>
-      <div id="growthFill" style="margin-top:8px"></div>
-    </div>
   </div>
 </div>
 
@@ -200,10 +195,15 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
   <h2 class="sh">3 — Sales, Hurdle Rates &amp; Stochastic Parameters</h2>
   <div class="g2">
     <div>
-      <div class="hint" style="margin-bottom:10px">Sales scenario range ($M/yr) — LHS samples within these bounds</div>
-      <label class="f"><span class="lb">Medicare Supplement — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_MS_lo" value="250" step="10"><input type="number" id="b_MS_hi" value="350" step="10"></div></label>
-      <label class="f"><span class="lb">Preneed — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_PN_lo" value="200" step="10"><input type="number" id="b_PN_hi" value="240" step="10"></div></label>
-      <label class="f"><span class="lb">Hospital Indemnity — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_HI_lo" value="18" step="1"><input type="number" id="b_HI_hi" value="25" step="1"></div></label>
+      <div class="hint" style="margin-bottom:10px"><strong>2026 starting sales ($M)</strong> — LHS samples the 2026 level within these bounds; 2027–2030 grow off it (right).</div>
+      <label class="f"><span class="lb">Medicare Supplement — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_MS_lo" value="150" step="10"><input type="number" id="b_MS_hi" value="400" step="10"></div></label>
+      <label class="f"><span class="lb">Preneed — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_PN_lo" value="150" step="10"><input type="number" id="b_PN_hi" value="270" step="10"></div></label>
+      <label class="f"><span class="lb">Hospital Indemnity — min / max</span><div style="display:flex;gap:8px"><input type="number" id="b_HI_lo" value="15" step="1"><input type="number" id="b_HI_hi" value="25" step="1"></div></label>
+      <div id="growthSection" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
+        <div class="hint" style="margin-bottom:6px;font-weight:600">Per-product sales growth (%/yr) <span style="font-weight:400;color:var(--muted)">· each product grows at its <strong>target</strong> 2027–2030; a plan's growth is cut only to stay feasible — MS first (down to its <strong>min</strong>, negative allowed), then HI, then PN. 2031–2035 held flat at 2030; scenario draws only, never the baseline.</span></div>
+        <div class="hscroll"><table class="atbl" id="growthTbl"></table></div>
+        <div id="growthFill" style="margin-top:8px"></div>
+      </div>
     </div>
     <div>
       <div class="hint" style="margin-bottom:10px">IRR hurdle rates by product (Constraint 3 weighted target)</div>
@@ -245,13 +245,13 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
         <label class="f" style="margin:0"><span class="lb"><em>b</em> — max probability</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_irrb" value="15" step="1"><span>%</span></div></label>
       </div>
     </div>
-    <label class="f"><span class="lb">Constraint 5 — program DE positive by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_deyr" value="7" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px">Distributable earnings from the <strong>2026–2030 new-business program</strong> (all 3 products summed) must be positive in projection year N (year 7 = calendar year 2032). A 5-year issuance program turns cash-positive ~2031, so the default is later than the old single-cohort value. Pre-2026 in-force is excluded.</p></label>
-    <label class="f"><span class="lb">Constraint 6 — program cumulative DE by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumdeyr" value="10" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px">Cumulative distributable earnings from the <strong>2026–2030 new-business program</strong> (all 3 products summed) must turn positive by year N (year 10 = calendar year 2035). Pre-2026 in-force is excluded.</p></label>
+    <label class="f"><span class="lb">Constraint 5 — each cohort DE positive by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_deyr" value="4" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px"><strong>Each issue year 2026–2030</strong>'s cohort (all 3 products summed), on its own timeline, must have positive DE by its year N (year 4 = the 4th year after issue). Pre-2026 in-force is excluded.</p></label>
+    <label class="f"><span class="lb">Constraint 6 — each cohort cumulative DE by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumdeyr" value="10" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px"><strong>Each issue year 2026–2030</strong>'s cumulative cohort DE must turn positive by its year N (year 10 = the 10th year after issue). Pre-2026 in-force is excluded.</p></label>
   </div>
   <div style="margin-top:12px;padding:12px 14px;background:#f5f8fa;border:1px solid var(--line);border-radius:7px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 7 — CumDE floor (max negative program cumulative DE)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumfloor" value="-650" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px"><strong>2026–2030 program</strong> cumulative DE (all 3 products) must not fall below this floor in any year — the deepest capital drawdown across the 5-year issuance program (much deeper than a single cohort, hence the larger default). Pre-2026 in-force is excluded.</p></label>
-      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 8 — Year-1 DE floor (max negative 2026 first-year DE)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_de1floor" value="-175" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px">Caps first-year (2026) acquisition strain — only the 2026 cohort issues in 2026, so this stays a single-year guardrail (all 3 products; pre-2026 in-force excluded). Its evidence panel is on the Constraint Evidence tab, and it appears in the What-if shadow prices.</p></label>
+      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 7 — CumDE floor (per cohort)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumfloor" value="-180" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px"><strong>Each issue year 2026–2030</strong>'s cumulative cohort DE must not fall below this floor in any year — the deepest capital drawdown that single year's issuance reaches. Pre-2026 in-force is excluded.</p></label>
+      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 8 — Year-1 DE floor (per cohort)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_de1floor" value="-150" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px">Caps first-year acquisition strain for <strong>each issue year 2026–2030</strong>'s cohort (all 3 products; pre-2026 in-force excluded). Its evidence panel is on the Constraint Evidence tab, and it appears in the What-if shadow prices.</p></label>
       <div><button class="btn ghost sm" onclick="(function(){var d=document.getElementById('cumDE-baseline-tbl');d.style.display=d.style.display==='none'?'block':'none';})()">Show baseline CumDE</button>
       <div id="cumDE-baseline-tbl" style="display:none;margin-top:8px;overflow:auto"><div id="cumDEBslTbl"></div></div></div>
     </div>
@@ -343,8 +343,8 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 
 <div style="margin-bottom:10px;padding:10px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:7px">
   <span class="lb" style="margin-right:12px">Run mode</span>
-  <label style="margin-right:16px"><input type="radio" name="runMode" id="runModeFast" checked> <strong>Fast</strong> — frontier only (~1 min)</label>
-  <label><input type="radio" name="runMode" id="runModeSlow"> <strong>Slow</strong> — adds the trough-RBC tail constraint (full RBC recompute per stochastic draw; ~4–5 min at 100×100)</label>
+  <label style="margin-right:16px"><input type="radio" name="runMode" id="runModeFast" checked> <strong>Fast</strong> — frontier only (~3–5 min at 100×100; values each year's program + growth repair per scenario)</label>
+  <label><input type="radio" name="runMode" id="runModeSlow"> <strong>Slow</strong> — adds the trough-RBC tail constraint (full RBC recompute per stochastic draw; ~15–25 min at 100×100)</label>
 </div>
 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
   <button class="btn" id="runBtn" style="min-width:200px;font-size:14px;padding:12px 28px">▶ Run Frontier</button>
@@ -684,11 +684,11 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- ?v=… cache-busts the engine + app on GitHub Pages; bump it whenever viewer/engine JS changes (worker.js inherits this version). -->
-<script src="../src/vnb.js?v=220"></script>
-<script src="../src/ev-recalc.js?v=220"></script>
-<script src="../src/rbc-surplus.js?v=220"></script>
-<script src="../src/reinsurance.js?v=220"></script>
-<script src="../src/frontier.js?v=220"></script>
-<script src="app.js?v=220"></script>
+<script src="../src/vnb.js?v=221"></script>
+<script src="../src/ev-recalc.js?v=221"></script>
+<script src="../src/rbc-surplus.js?v=221"></script>
+<script src="../src/reinsurance.js?v=221"></script>
+<script src="../src/frontier.js?v=221"></script>
+<script src="app.js?v=221"></script>
 </body>
 </html>

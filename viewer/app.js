@@ -1,11 +1,11 @@
 (function(){'use strict';
 var S={ev:null,ts:null,surplus:null,params:null,baseline:null,origLIF:null,chart:null,
-  bounds:{MS:[250,350],PN:[200,240],HI:[18,25]},hurdles:{MS:.12,PN:.10,HI:.10},
+  bounds:{MS:[150,400],PN:[150,270],HI:[15,25]},hurdles:{MS:.12,PN:.10,HI:.10},
   origSales:{MS:{2026:212.92,2027:200,2028:200,2029:200,2030:200},PN:{2026:230.0,2027:253.0,2028:278.3,2029:306.13,2030:336.743},HI:{2026:19.124725,2027:20.08096125,2028:21.0850093125,2029:22.139259778125,2030:23.24622276703125}},
   claimsSD:{MS:.04,PN:.035,HI:.055},claimsProcSD:{MS:.03,PN:.02,HI:.04},lapseSD:{MS:.065,PN:.045,HI:.07},lapseProcSD:{MS:.03,PN:.02,HI:.04},procCorr:{MS:.25,PN:.50,HI:.25},
   nierSD:{MS:0,PN:.0035,HI:0},nierProcSD:{MS:0,PN:.0015,HI:0},   // PN-only additive-bps NIER shock σ (35bps syst / 15bps proc; PN claimsSD now = mortality σ, lapseSD/procCorr retired for PN)
   nScen:100,nStoch:100,seed:null,lastRunSeed:null,slowMode:false,_wakeLock:null,_running:false,
-  cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:7,cumDeYr:10,cumDEFloor:-650,de1Floor:-175,rbcTailX:3.5,rbcTailY:.25},
+  cons:{rbcFloor:4.0,tacChgFloor:-.12,irr3on:true,irrA:.08,irrB:.15,deYr:4,cumDeYr:10,cumDEFloor:-180,de1Floor:-150,rbcTailX:3.5,rbcTailY:.25},
   surplusNote:{on:true,amount:150,tenor:10,rate:0.09,fees:0.03,nierSN:0.04,startDate:'2026-06-30'},
   // Reinsurance — MS quota share, ON by default at 10%/yr. Mirrors runner/defaults.js + the Config-tab Reinsurance section.
   reinsurance:{on:true,lagYears:1,
@@ -38,7 +38,9 @@ S.seed=F.STOCH_SEED;   // default RNG seed (overridable via the Config seed inpu
 // Sales to feed a scenario recompute: a custom scenario carries an explicit per-year
 // salesTable (used verbatim, no growth); frontier scenarios only have a 2026 anchor
 // (scalar) which mkScalars grows by the schedule. Use this everywhere a scenario is re-run.
-function scenSales(scen){return (scen&&scen.salesTable)||(scen&&scen.sales);}
+function scenSales(scen){return (scen&&scen.salesPath)||(scen&&scen.salesTable)||(scen&&scen.sales);}
+// Display the 2026→2030 path: "319→410" when the product grows/shrinks, else just the 2026 level.
+function pathCell(r,c,dec){var s0=r&&r.sales&&r.sales[c];var sv=fmt(s0,dec);var p=r&&r.salesPath&&r.salesPath[c];if(p&&p[4]!=null&&isFinite(p[4])&&Math.abs(p[4]-s0)>=0.5)return sv+'→'+fmt(p[4],dec);return sv;}
 // drawdown (most-negative cumulative 2026-issue DE) from a buildScen cumDE26 map — matches stochMetrics' dd
 function ddFromCum(cum){var d=0;for(var y=2026;y<=2055;y++){var v=cum[y];if(v!=null&&v<d)d=v;}return d;}
 var lhs=F.lhs,buildShockBank=F.buildShockBank,shockFromBank=F.shockFromBank,
@@ -51,27 +53,28 @@ var STOCH_SEED=F.STOCH_SEED;
 // Baseline compute is pure (frontier.js) and NEVER sees S.growth (Invariant 1); the
 // viewer wraps it only to redraw the baseline cumulative-DE table.
 function computeBaseline(){F.computeBaseline();renderCumDEBaseline();}
-/* ---- per-product sales-GROWTH RANGE (scenario draws only) ----
-   One [min,max] annual growth range per product. The multi-year frontier samples a growth rate
-   per product PER YEAR 2027-2030 from within this range (frontier.js runSweep), so the plan
-   chooses how fast each product grows; 2031-2035 is held flat at the 2030 level. Applied ONLY to
-   the sampled draws, never the baseline. Defaults span the prior schedule: MS -12%..+10%,
-   PN 0%..+10%, HI 0%..+5%. */
-function defaultGrowthRange(){return {MS:[-0.12,0.10],PN:[0.0,0.10],HI:[0.0,0.05]};}
-S.growthRange=defaultGrowthRange();
+/* ---- per-product sales-GROWTH TARGET + MIN (scenario draws only) ----
+   Each product grows at its TARGET rate 2027-2030 (compounded off the sampled 2026 level); a
+   scenario's growth is cut ONLY to reach feasibility (frontier.js repairGrowth: MS first, then HI,
+   then PN, down toward MIN — negative allowed for MS). 2031-2035 held flat at 2030. Applied ONLY to
+   the sampled draws, never the baseline. Defaults: target MS 5% / PN 10% / HI 10%; min MS -12% / PN/HI 0%. */
+function defaultGrowthTarget(){return {MS:0.05,PN:0.10,HI:0.10};}
+function defaultGrowthMin(){return {MS:-0.12,PN:0.0,HI:0.0};}
+S.growthTarget=defaultGrowthTarget();
+S.growthMin=defaultGrowthMin();
 function refreshGrowthUI(){
   var shortName={MS:'Med Supp',PN:'Preneed',HI:'Hosp Ind'};
   var ist='width:64px;font-size:11px;padding:2px 4px;font-family:var(--mono);border:1px solid var(--line);border-radius:4px;text-align:right';
-  var h='<thead><tr><th>Product</th><th>Min growth %/yr</th><th>Max growth %/yr</th></tr></thead><tbody>';
+  var h='<thead><tr><th>Product</th><th>Target growth %/yr</th><th>Min growth %/yr (floor)</th></tr></thead><tbody>';
   PRODS.forEach(function(c){
-    var r=(S.growthRange&&S.growthRange[c])||[0,0];
+    var t=(S.growthTarget&&S.growthTarget[c])||0, mn=(S.growthMin&&S.growthMin[c])||0;
     h+='<tr><td>'+shortName[c]+'</td>'+
-       '<td><input type="number" id="grng_'+c+'_lo" value="'+(+(r[0]*100).toFixed(3))+'" step="0.5" style="'+ist+'"></td>'+
-       '<td><input type="number" id="grng_'+c+'_hi" value="'+(+(r[1]*100).toFixed(3))+'" step="0.5" style="'+ist+'"></td></tr>';
+       '<td><input type="number" id="tg_'+c+'" value="'+(+(t*100).toFixed(3))+'" step="0.5" style="'+ist+'"></td>'+
+       '<td><input type="number" id="gmin_'+c+'" value="'+(+(mn*100).toFixed(3))+'" step="0.5" style="'+ist+'"></td></tr>';
   });
   document.getElementById('growthTbl').innerHTML=h+'</tbody>';
   var gf=document.getElementById('growthFill');if(gf)gf.innerHTML='';
-  PRODS.forEach(function(c){['lo','hi'].forEach(function(sfx){var el=document.getElementById('grng_'+c+'_'+sfx);if(el)el.addEventListener('change',readInputs);});});
+  PRODS.forEach(function(c){['tg_'+c,'gmin_'+c].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('change',readInputs);});});
 }
 /* ---- Step 2: seeded Common-Random-Numbers + antithetic variance reduction ----
    Risk estimates now use ONE shared bank of standard-normal draws across every sales
@@ -252,7 +255,7 @@ function releaseWakeLock(){ if(S._wakeLock){try{S._wakeLock.release();}catch(e){
 // Signature of everything that determines the run's results (must be read AFTER readInputs()).
 function runSignature(){
   return JSON.stringify({seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
-    bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growthRange:S.growthRange,surplusNote:S.surplusNote,reinsurance:S.reinsurance,
+    bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growthTarget:S.growthTarget,growthMin:S.growthMin,surplusNote:S.surplusNote,reinsurance:S.reinsurance,
     claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
     procCorr:S.procCorr,nierSD:S.nierSD,nierProcSD:S.nierProcSD,origSales:S.origSales,years:S.years});
 }
@@ -344,8 +347,8 @@ function mainThreadCallbacks(fill,st,label,sig,resume,n){
 }
 function runSweepInWorker(fill,st,sig,resume,resumedFrom){
   return new Promise(function(resolve,reject){
-    var w=new Worker('worker.js?v=220');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
-    var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growthRange:S.growthRange,surplusNote:S.surplusNote,reinsurance:S.reinsurance,
+    var w=new Worker('worker.js?v=221');   // ?v matches index.html so the worker + engine load fresh (not stale-cached)
+    var cfg={params:S.params,bounds:S.bounds,hurdles:S.hurdles,cons:S.cons,growthTarget:S.growthTarget,growthMin:S.growthMin,surplusNote:S.surplusNote,reinsurance:S.reinsurance,
       seed:S.seed,nScen:S.nScen,nStoch:S.nStoch,slowMode:S.slowMode,
       claimsSD:S.claimsSD,claimsProcSD:S.claimsProcSD,lapseSD:S.lapseSD,lapseProcSD:S.lapseProcSD,
       procCorr:S.procCorr,nierSD:S.nierSD,nierProcSD:S.nierProcSD,origSales:S.origSales,years:S.years};
@@ -388,7 +391,7 @@ async function testCustomScenario(){
   // Remove any prior custom scenario, then add this one with a distinctive id
   S.results=S.results.filter(function(r){return !r.isCustom;});
   var cid='C'+(S.results.length+1);
-  var rec={id:cid,sales:sales26,salesPath:sales,salesTable:sales,portIRR:det.portIRR,portNPV:det.portNPV,wtdIRR:det.wtdIRR,risk:risk,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochMinRBC:S.slowMode?sMinRBC:null,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false,isCustom:true};
+  var rec={id:cid,sales:sales26,salesPath:sales,salesTable:sales,portIRR:det.portIRR,portNPV:det.portNPV,wtdIRR:det.wtdIRR,risk:risk,irr26:det.irr26,npv26:det.npv26,de26:det.de26,cumDE26:det.cumDE26,cohorts:det.cohorts,minRBC:det.minRBC,de:det.de,cumDE:det.cumDE,atiBopCS:det.atiBopCS,maxDecline:det.maxDecline,tacChg:det.tacChg,scalars:det.scalars,stochIRRs:sIRRs,stochNPVs:sNPVs,stochMinRBC:S.slowMode?sMinRBC:null,stochScalars:stochScalarsList,failures:fails,feasible:fails.length===0,isFrontier:false,isCustom:true};
   rec.riskSD=dr.sd;rec.cte90=dr.cte90;rec.semidev=dr.semidev;rec.ddMed=dr.ddMed;rec.ddWorst=dr.ddWorst;rec.stochDD=sDD;
   S.results.push(rec);
   markFrontier(S.results);populateSelectors();
@@ -517,13 +520,13 @@ function readInputs(){
   document.querySelectorAll('.assum-inp').forEach(function(inp){var p=inp.dataset.prod,k=inp.dataset.kind,i=+inp.dataset.idx,v=+inp.value||0;if(P.perProduct&&P.perProduct[p]&&P.perProduct[p][k])P.perProduct[p][k][i]=((k==='NIER'||k==='NIER_EV')?v/100:v);});
   // origSales from per-year table
   PRODS.forEach(function(c){SALES_YEARS.forEach(function(y){var el=document.getElementById('os_'+c+'_'+y);if(el)S.origSales[c][y]=+el.value||S.origSales[c][y];});});
-  // per-product annual growth RANGE (decimals); the frontier samples a rate per year 2027-2030 within it
-  PRODS.forEach(function(c){var lo=document.getElementById('grng_'+c+'_lo'),hi=document.getElementById('grng_'+c+'_hi');if(lo&&hi){var a=+lo.value,b=+hi.value;if(isFinite(a)&&isFinite(b))S.growthRange[c]=[a/100,b/100];}});
+  // per-product growth TARGET (start) + MIN (repair floor), decimals
+  PRODS.forEach(function(c){var t=document.getElementById('tg_'+c),mn=document.getElementById('gmin_'+c);if(t){var a=+t.value;if(isFinite(a))S.growthTarget[c]=a/100;}if(mn){var b=+mn.value;if(isFinite(b))S.growthMin[c]=b/100;}});
   updateConsSummary();
 }
 function updateConsSummary(){
   var c=S.cons,on=(document.getElementById('c_irr3on')||{}).checked;
-  document.getElementById('consSummary').innerHTML='C1 RBC≥'+rx(c.rbcFloor||3)+'&nbsp; C2 ΔTAC/BOP≥'+pct(c.tacChgFloor||-.15)+'&nbsp; C3 2026 IRR vs target: '+(on?'on':'off')+'&nbsp; C4 P(2026 IRR<'+pct(c.irrA||.08)+')≤'+pct(c.irrB||.10)+'&nbsp; C5 2026 DE>0 yr '+(c.deYr||5)+'&nbsp; C6 2026 CumDE>0 yr '+(c.cumDeYr||12)+'&nbsp; C7 CumDE floor $'+fmt(c.cumDEFloor||0,0)+'M'+'&nbsp; C8 Yr-1 DE≥$'+fmt(c.de1Floor!=null?c.de1Floor:-150,0)+'M'+'&nbsp; C9 RBC tail P(min RBC<'+rx(c.rbcTailX!=null?c.rbcTailX:3.5)+')≤'+pct(c.rbcTailY!=null?c.rbcTailY:.10)+(S.slowMode?'':' (Slow)');
+  document.getElementById('consSummary').innerHTML='C1 RBC≥'+rx(c.rbcFloor||3)+'&nbsp; C2 ΔTAC/BOP≥'+pct(c.tacChgFloor||-.15)+'&nbsp; C3 program IRR vs target: '+(on?'on':'off')+'&nbsp; C4 P(program IRR<'+pct(c.irrA||.08)+')≤'+pct(c.irrB||.10)+'&nbsp; C5 each-cohort DE>0 yr '+(c.deYr||5)+'&nbsp; C6 each-cohort CumDE>0 yr '+(c.cumDeYr||12)+'&nbsp; C7 each-cohort CumDE floor $'+fmt(c.cumDEFloor||0,0)+'M'+'&nbsp; C8 each-cohort Yr-1 DE≥$'+fmt(c.de1Floor!=null?c.de1Floor:-150,0)+'M'+'&nbsp; C9 RBC tail P(min RBC<'+rx(c.rbcTailX!=null?c.rbcTailX:3.5)+')≤'+pct(c.rbcTailY!=null?c.rbcTailY:.10)+(S.slowMode?'':' (Slow)');
 }
 
 /* ---- buildUI ---- */
@@ -639,9 +642,9 @@ function getDatasets(){
   res.forEach(function(r){
     if(!isFinite(r.portNPV)||!isFinite(r.risk))return;
     if(feasOnly&&!r.feasible&&!r.isCustom)return;  // hide infeasible scenarios entirely when toggled (always keep custom)
-    if(r.isCustom){custom.push({x:r.risk,y:r.portNPV,id:r.id,sales:r.sales,irr:r.portIRR,wtdIRR:r.wtdIRR,risk:r.risk,dd:r.ddWorst,feasible:r.feasible,frontier:r.isFrontier});return;}
+    if(r.isCustom){custom.push({x:r.risk,y:r.portNPV,id:r.id,sales:r.sales,salesPath:r.salesPath,irr:r.portIRR,wtdIRR:r.wtdIRR,risk:r.risk,dd:r.ddWorst,feasible:r.feasible,frontier:r.isFrontier});return;}
     if(shCloud&&r.stochNPVs)r.stochNPVs.forEach(function(s){if(isFinite(s))cloud.push({x:r.risk,y:s});});
-    if(shDet)det.push({x:r.risk,y:r.portNPV,id:r.id,sales:r.sales,irr:r.portIRR,wtdIRR:r.wtdIRR,risk:r.risk,dd:r.ddWorst,feasible:r.feasible,frontier:r.isFrontier});
+    if(shDet)det.push({x:r.risk,y:r.portNPV,id:r.id,sales:r.sales,salesPath:r.salesPath,irr:r.portIRR,wtdIRR:r.wtdIRR,risk:r.risk,dd:r.ddWorst,feasible:r.feasible,frontier:r.isFrontier});
     if(shFront&&r.isFrontier)front.push({x:r.risk,y:r.portNPV,id:r.id});
   });
   front.sort(function(a,b){return a.x-b.x;});
@@ -659,7 +662,7 @@ function drawChart(){
     type:'scatter',data:{datasets:getDatasets()},
     options:{animation:false,responsive:true,maintainAspectRatio:false,
       plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:10,padding:14}},
-        tooltip:{callbacks:{label:function(ctx){var d=ctx.raw;if(!d.id)return' PVDE: '+fmt(d.y,1);return[' Scenario #'+d.id,' PVDE: $'+fmt(d.y,1)+'M | Downside vs plan: $'+fmt(d.x,1)+'M',' Worst drawdown: $'+fmt(d.dd,1)+'M',' IRR: '+pct(d.irr,2)+' | Target: '+pct(d.wtdIRR,2),' MS: $'+fmt(d.sales&&d.sales.MS,0)+'M PN: $'+fmt(d.sales&&d.sales.PN,0)+'M HI: $'+fmt(d.sales&&d.sales.HI,1)+'M'];}}}
+        tooltip:{callbacks:{label:function(ctx){var d=ctx.raw;if(!d.id)return' PVDE: '+fmt(d.y,1);return[' Scenario #'+d.id,' PVDE: $'+fmt(d.y,1)+'M | Downside vs plan: $'+fmt(d.x,1)+'M',' Worst drawdown: $'+fmt(d.dd,1)+'M',' IRR: '+pct(d.irr,2)+' | Target: '+pct(d.wtdIRR,2),' MS $'+pathCell(d,'MS',0)+' · PN $'+pathCell(d,'PN',0)+' · HI $'+pathCell(d,'HI',1)+' (2026→2030)'];}}}
       },
       scales:{
         x:{min:getAxisVal('ax-xmin'),max:getAxisVal('ax-xmax'),title:{display:true,text:'Downside risk vs plan ($M) — value at risk in worst 10% (right = more risk)',font:{size:11},color:'#6b7a91'},ticks:{font:{size:10},callback:function(v){return v.toFixed(1);}}},
@@ -754,7 +757,7 @@ function renderScenTable(){
     var rbcProb=(r.stochMinRBC&&r.stochMinRBC.length)?(r.stochMinRBC.filter(function(x){return x<S.cons.rbcTailX;}).length/r.stochMinRBC.length):null;
     var fails=r.failures.map(function(f){return'<span class="chip bad" style="font-size:10px">'+f.code+'</span>';}).join(' ');
     var rowStyle=r.isCustom?' style="background:#fdf6e8"':(r.isFrontier?' class="fr-row"':'');
-    h+='<tr'+rowStyle+'><td style="font-family:var(--mono)'+(r.isCustom?';font-weight:700;color:#8a5e10':'')+'">'+r.id+'</td><td>'+st+'</td><td>'+fmt(r.sales.MS,0)+'</td><td>'+fmt(r.sales.PN,0)+'</td><td>'+fmt(r.sales.HI,1)+'</td><td>'+fmt(r.portNPV,1)+'</td><td>'+fmt(r.risk,1)+'</td><td>'+fmt(r.ddWorst,1)+'</td><td>'+pct(r.portIRR,2)+'</td><td>'+pct(r.wtdIRR,2)+'</td><td>'+rx(r.minRBC)+'</td><td'+(rbcProb!=null&&rbcProb>S.cons.rbcTailY?' style="color:var(--red);font-weight:700"':'')+'>'+(rbcProb!=null?pct(rbcProb,1):'—')+'</td><td>'+pct(p10,2)+'</td><td style="text-align:left">'+fails+'</td></tr>';
+    h+='<tr'+rowStyle+'><td style="font-family:var(--mono)'+(r.isCustom?';font-weight:700;color:#8a5e10':'')+'">'+r.id+'</td><td>'+st+'</td><td>'+pathCell(r,'MS',0)+'</td><td>'+pathCell(r,'PN',0)+'</td><td>'+pathCell(r,'HI',1)+'</td><td>'+fmt(r.portNPV,1)+'</td><td>'+fmt(r.risk,1)+'</td><td>'+fmt(r.ddWorst,1)+'</td><td>'+pct(r.portIRR,2)+'</td><td>'+pct(r.wtdIRR,2)+'</td><td>'+rx(r.minRBC)+'</td><td'+(rbcProb!=null&&rbcProb>S.cons.rbcTailY?' style="color:var(--red);font-weight:700"':'')+'>'+(rbcProb!=null?pct(rbcProb,1):'—')+'</td><td>'+pct(p10,2)+'</td><td style="text-align:left">'+fails+'</td></tr>';
   });
   document.getElementById('scen-tbl-wrap').innerHTML=h+'</tbody></table>';
 }
@@ -1034,46 +1037,42 @@ function renderEvidence(){
     row('Threshold a','IRR < '+pct(c.irrA))+row('Max probability b','< '+pct(c.irrB))+row('Observed P(IRR<a)',pct(prob)+' ('+below+' / '+stochIRRs.length+' runs)',c4pass?'good':'bad')+row('Stochastic runs',String(stochIRRs.length)),
     stochIRRs.length?'Across the scenario\'s stochastic claim/lapse draws.':'No stochastic runs available for this scenario (run with stochastic count > 0).');
 
-  // C5 — program DE positive by year (matches engine: m.de)
-  var dy=2025+c.deYr, deV=m.de[dy]||0, c5pass=deV>0;
-  var dePos=null;for(var py=2026;py<=2055;py++){if((m.de[py]||0)>0){dePos=py;break;}}
-  var c5yrs=[];for(var yy=2026;yy<=2040;yy++)c5yrs.push(yy);
-  var c5tbl=yearTable(c5yrs,[
-    {label:'program DE ($M)',vals:c5yrs.map(function(y){return m.de[y]||0;}),fmt:function(v){return fmt(v,1);},bad:function(v,y){return y===dy&&v<=0;}}
-  ]);
-  html+=card('C5','2026-2030 program DE positive by year',c5pass,
-    row('Target year','yr '+c.deYr+' (calendar '+dy+')')+row('Program DE that year',fmt(deV,2)+' $M',c5pass?'good':'bad')+row('First year DE turns positive',dePos?String(dePos):'never in horizon'),
-    '2026-2030 new-business program distributable earnings (all 3 products summed), pre-2026 in-force excluded. Target year highlighted if negative.',c5tbl);
+  // C5-C8 are PER COHORT: each issue year 2026-2030, on its own timeline, vs the original thresholds.
+  var COH=[2026,2027,2028,2029,2030], coh=m.cohorts||{};
+  // small per-issue-year table builder: rows = issue years, one value + pass/fail each
+  function cohTable(hdr,valFn,okFn){
+    var h='<table class="atbl"><thead><tr><th>Issue year</th><th>'+hdr+'</th><th></th></tr></thead><tbody>';
+    COH.forEach(function(iy){var v=valFn(iy),ok=okFn(iy,v);h+='<tr><td>'+iy+'</td><td style="font-family:var(--mono)'+(ok?'':';color:var(--red);font-weight:700')+'">'+fmt(v,1)+'</td><td>'+(ok?'<span class="chip ok">ok</span>':'<span class="chip bad">fail</span>')+'</td></tr>';});
+    return h+'</tbody></table>';
+  }
+  // C5 — each cohort DE > 0 by its year deYr (issue year + deYr - 1)
+  var c5bad=null;COH.forEach(function(iy){var v=(coh[iy]&&coh[iy].de[iy+c.deYr-1])||0;if(v<=0&&c5bad===null)c5bad=iy;});
+  html+=card('C5','Each cohort DE positive by year '+c.deYr,c5bad===null,
+    row('Rule','each issue year DE > 0 in its year '+c.deYr+' (issue + '+(c.deYr-1)+')')+(c5bad!==null?row('Worst issue year',String(c5bad)+' (DE '+fmt((coh[c5bad]&&coh[c5bad].de[c5bad+c.deYr-1])||0,1)+'$M)','bad'):row('All cohorts','pass','good')),
+    'Distributable earnings of EACH issue-year cohort (all 3 products), on its own timeline. Fails if any cohort is non-positive at its year '+c.deYr+'.',
+    cohTable('DE at yr '+c.deYr+' ($M)',function(iy){return (coh[iy]&&coh[iy].de[iy+c.deYr-1])||0;},function(iy,v){return v>0;}));
 
-  // C6 — program cumulative DE positive by year (matches engine: m.cumDE)
-  var cy=2025+c.cumDeYr, cumV=m.cumDE[cy]||0, c6pass=cumV>0;
-  var cumPos=null;for(var py2=2026;py2<=2055;py2++){if((m.cumDE[py2]||0)>0){cumPos=py2;break;}}
-  var c6yrs=[];for(var yy=2026;yy<=2040;yy++)c6yrs.push(yy);
-  var c6tbl=yearTable(c6yrs,[
-    {label:'program cumulative DE ($M)',vals:c6yrs.map(function(y){return m.cumDE[y]||0;}),fmt:function(v){return fmt(v,1);},bad:function(v,y){return y===cy&&v<=0;}}
-  ]);
-  html+=card('C6','2026-2030 program cumulative DE positive by year',c6pass,
-    row('Target year','yr '+c.cumDeYr+' (calendar '+cy+')')+row('Program cumDE that year',fmt(cumV,2)+' $M',c6pass?'good':'bad')+row('First year cumDE turns positive',cumPos?String(cumPos):'never in horizon'),
-    'Cumulative 2026-2030 program DE (all 3 products), pre-2026 in-force excluded. Target year highlighted if negative.',c6tbl);
+  // C6 — each cohort cumDE > 0 by its year cumDeYr
+  var c6bad=null;COH.forEach(function(iy){var v=(coh[iy]&&coh[iy].cumDE[iy+c.cumDeYr-1])||0;if(v<=0&&c6bad===null)c6bad=iy;});
+  html+=card('C6','Each cohort cumulative DE positive by year '+c.cumDeYr,c6bad===null,
+    row('Rule','each issue year cumDE > 0 in its year '+c.cumDeYr)+(c6bad!==null?row('Worst issue year',String(c6bad),'bad'):row('All cohorts','pass','good')),
+    'Cumulative DE of EACH issue-year cohort, on its own timeline. Fails if any cohort is non-positive at its year '+c.cumDeYr+'.',
+    cohTable('cumDE at yr '+c.cumDeYr+' ($M)',function(iy){return (coh[iy]&&coh[iy].cumDE[iy+c.cumDeYr-1])||0;},function(iy,v){return v>0;}));
 
-  // C7 — CumDE floor (program)
-  var cumVals=Object.keys(m.cumDE).map(function(y){return m.cumDE[y];});
-  var minCum=Math.min.apply(null,cumVals);
-  var minCumYr=Object.keys(m.cumDE).reduce(function(a,y){return m.cumDE[y]<m.cumDE[a]?y:a;},Object.keys(m.cumDE)[0]);
-  var cfpass=!(c.cumDEFloor!=null&&minCum<c.cumDEFloor);
-  html+=card('C7','CumDE floor — maximum program capital drawdown',cfpass,
-    row('Floor','≥ '+fmt(c.cumDEFloor,0)+' $M')+row('Deepest cumDE',fmt(minCum,1)+' $M in '+minCumYr,cfpass?'good':'bad'),
-    'The most negative the 2026-2030 program cumulative DE reaches before turning cash-positive — the peak capital at risk across the 5-year issuance program.');
+  // C7 — each cohort min cumDE >= floor
+  function cohMinCum(iy){var o=coh[iy]?coh[iy].cumDE:null;if(!o)return 0;return Math.min.apply(null,Object.keys(o).map(function(y){return o[y];}));}
+  var c7bad=null;COH.forEach(function(iy){if(c.cumDEFloor!=null&&cohMinCum(iy)<c.cumDEFloor&&c7bad===null)c7bad=iy;});
+  html+=card('C7','CumDE floor (per cohort) ≥ $'+fmt(c.cumDEFloor,0)+'M',c7bad===null,
+    row('Floor','each cohort min cumDE ≥ $'+fmt(c.cumDEFloor,0)+'M')+(c7bad!==null?row('Worst issue year',String(c7bad)+' ($'+fmt(cohMinCum(c7bad),1)+'M)','bad'):row('All cohorts','pass','good')),
+    'The deepest cumulative-DE drawdown EACH single year of issues reaches. Fails if any cohort breaches the floor.',
+    cohTable('deepest cumDE ($M)',cohMinCum,function(iy,v){return c.cumDEFloor==null||v>=c.cumDEFloor;}));
 
-  // C8 — Year-1 (2026) DE floor — first-year acquisition strain (only 2026 issues in 2026; m.de[2026])
-  var de1V=m.de[2026]||0, d1pass=!(c.de1Floor!=null&&de1V<c.de1Floor);
-  var d1yrs=[];for(var yy=2026;yy<=2030;yy++)d1yrs.push(yy);
-  var d1tbl=yearTable(d1yrs,[
-    {label:'program DE ($M)',vals:d1yrs.map(function(y){return m.de[y]||0;}),fmt:function(v){return fmt(v,1);},bad:function(v,y){return y===2026&&c.de1Floor!=null&&v<c.de1Floor;}}
-  ]);
-  html+=card('C8','Year-1 (2026) distributable-earnings floor',d1pass,
-    row('Floor','≥ $'+fmt(c.de1Floor,0)+'M')+row('2026 (year-1) DE',fmt(de1V,1)+' $M',d1pass?'good':'bad')+row('Headroom vs floor',fmt(de1V-(c.de1Floor||0),1)+' $M',d1pass?'good':'bad'),
-    'First-year (2026) distributable earnings (all 3 products summed; pre-2026 in-force excluded). Only the 2026 cohort issues in 2026, so this stays a single-year acquisition-strain guardrail. 2026 is highlighted if it breaches the floor.',d1tbl);
+  // C8 — each cohort year-1 (issue-year) DE >= floor
+  var c8bad=null;COH.forEach(function(iy){var v=(coh[iy]&&coh[iy].de[iy])||0;if(c.de1Floor!=null&&v<c.de1Floor&&c8bad===null)c8bad=iy;});
+  html+=card('C8','Year-1 DE floor (per cohort) ≥ $'+fmt(c.de1Floor,0)+'M',c8bad===null,
+    row('Floor','each cohort issue-year DE ≥ $'+fmt(c.de1Floor,0)+'M')+(c8bad!==null?row('Worst issue year',String(c8bad)+' ($'+fmt((coh[c8bad]&&coh[c8bad].de[c8bad])||0,1)+'M)','bad'):row('All cohorts','pass','good')),
+    'First-year acquisition strain for EACH issue-year cohort (all 3 products). Fails if any cohort breaches the floor.',
+    cohTable('issue-year DE ($M)',function(iy){return (coh[iy]&&coh[iy].de[iy])||0;},function(iy,v){return c.de1Floor==null||v>=c.de1Floor;}));
 
   // RBC tail — trough RBC ratio across stochastic draws (Slow mode only)
   var rbcArr=scen.stochMinRBC, rtPass=true;
@@ -1215,10 +1214,10 @@ function renderDebug(){
       ['TAC_CHG','C2: Change in TAC / BOP TAC — annual (TAC−priorTAC)/priorTAC ≥ '+pct(S.cons.tacChgFloor)],
       ['IRR_TARGET','C3: 2026-2030 program IRR ≥ sales-weighted hurdle (MS '+pct(S.hurdles.MS)+', PN '+pct(S.hurdles.PN)+', HI '+pct(S.hurdles.HI)+'), 2026 weights'],
       ['IRR_TAIL','C4: 2026-2030 program IRR tail risk — P(IRR < '+pct(S.cons.irrA)+') ≤ '+pct(S.cons.irrB)+' across stochastic runs'],
-      ['DE_BY_YEAR','C5: 2026-2030 program DE (all 3 products) positive by year '+S.cons.deYr+' (calendar year '+(2025+S.cons.deYr)+')'],
-      ['CUMDE_BY_YEAR','C6: 2026-2030 program cumulative DE (all 3 products) positive by year '+S.cons.cumDeYr+' (calendar year '+(2025+S.cons.cumDeYr)+')'],
-      ['CUMDE_FLOOR','C7: CumDE floor — min 2026-2030 program cumulative DE ≥ $'+fmt(S.cons.cumDEFloor,0)+'M'],
-      ['DE1_FLOOR','C8: Year-1 DE floor — 2026 (first-year) DE ≥ $'+fmt(S.cons.de1Floor,0)+'M'],
+      ['DE_BY_YEAR','C5: each issue year 2026-2030 cohort DE > 0 by its year '+S.cons.deYr],
+      ['CUMDE_BY_YEAR','C6: each issue year 2026-2030 cohort cumulative DE > 0 by its year '+S.cons.cumDeYr],
+      ['CUMDE_FLOOR','C7: each issue year 2026-2030 cohort min cumulative DE ≥ $'+fmt(S.cons.cumDEFloor,0)+'M'],
+      ['DE1_FLOOR','C8: each issue year 2026-2030 cohort year-1 DE ≥ $'+fmt(S.cons.de1Floor,0)+'M'],
       ['RBC_TAIL','C9: Trough-RBC tail — P(trough RBC < '+rx(S.cons.rbcTailX)+') ≤ '+pct(S.cons.rbcTailY)+' across stochastic runs (Slow mode)']
     ];
     var failMap={};(scen.failures||[]).forEach(function(f){failMap[f.code]=f;});
@@ -1245,7 +1244,7 @@ function metricsFor(sel){
       feasible:null,isFrontier:null,failCodes:null};
   }
   var r=S.results.find(function(x){return String(x.id)===String(sel);});if(!r)return null;
-  var d=buildScen(r.salesTable||r.sales,{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1});
+  var d=buildScen(scenSales(r),{MS:1,PN:1,HI:1},{MS:1,PN:1,HI:1});
   var rbc={};[2026,2027,2028,2029,2030].forEach(function(y){rbc[y]=d.surplus[y]?d.surplus[y].ratio:null;});
   var minTac=r.tacChg?Math.min.apply(null,Object.keys(r.tacChg).map(function(y){return r.tacChg[y];})):null;
   // program (2026-2030) DE timing/floor, matching the engine constraints
