@@ -46,7 +46,7 @@ function dealReins(on) {
 
 // Build a baseline with the deal config, surplus note OFF (no-note RBC basis).
 function baselineWith(reinsOn) {
-  var S = D.buildState(EFENG, DATA, D.zeroGrowth());
+  var S = D.buildState(EFENG, DATA, D.zeroGrowthRange());
   S.surplusNote = { on: false, amount: 0, tenor: 10, rate: 0.09, fees: 0.03, nierSN: 0.04, startDate: '2026-06-30' };
   S.reinsurance = dealReins(reinsOn);
   var F = FRONTIER.create(S, EFENG);

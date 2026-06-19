@@ -33,22 +33,27 @@ function main() {
   var lhsI = parseInt(process.argv[2] != null ? process.argv[2] : '0', 10);
   var stoI = parseInt(process.argv[3] != null ? process.argv[3] : '0', 10);
   var mode = (process.argv[4] || 'default').toLowerCase();
-  var growth = (mode === 'zero') ? D.zeroGrowth() : D.defaultGrowth();
+  var growthRange = (mode === 'zero') ? D.zeroGrowthRange() : D.defaultGrowthRange();
 
-  var S = D.buildState(EFENG, DATA, growth);
+  var S = D.buildState(EFENG, DATA, growthRange);
   var F = FRONTIER.create(S, EFENG);
   F.computeBaseline();
 
-  // reproduce the exact sampling order of runner/run.js
+  // reproduce the EXACT multi-year sampling order of frontier.js runSweep: per-product 2026 level
+  // (MS,PN,HI), then per-product growth draws for 2027-2030, then the shock bank. Build the per-year
+  // sales path (2031-2035 held flat at 2030) — the scenario the frontier evaluated at this lhsIndex.
   F.setSeed(F.STOCH_SEED);
-  var msA = F.lhs(S.nScen, S.bounds.MS[0], S.bounds.MS[1]),
-      pnA = F.lhs(S.nScen, S.bounds.PN[0], S.bounds.PN[1]),
-      hiA = F.lhs(S.nScen, S.bounds.HI[0], S.bounds.HI[1]);
+  var GR = S.growthRange || { MS: [0, 0], PN: [0, 0], HI: [0, 0] };
+  var PROG_GY = [2027, 2028, 2029, 2030];
+  var levelA = { MS: F.lhs(S.nScen, S.bounds.MS[0], S.bounds.MS[1]), PN: F.lhs(S.nScen, S.bounds.PN[0], S.bounds.PN[1]), HI: F.lhs(S.nScen, S.bounds.HI[0], S.bounds.HI[1]) };
+  var grA = {}; PRODS.forEach(function (c) { grA[c] = PROG_GY.map(function () { return F.lhs(S.nScen, GR[c][0], GR[c][1]); }); });
+  var nYears = (S.params.scalars.years || []).length || 10;
+  function pathFor(c, i) { var arr = [levelA[c][i]], prev = arr[0]; for (var yi = 0; yi < PROG_GY.length; yi++) { prev = prev * (1 + grA[c][yi][i]); arr.push(prev); } while (arr.length < nYears) arr.push(arr[PROG_GY.length]); return arr; }
   var BANK = F.buildShockBank(S.nStoch);
-  if (lhsI < 0 || lhsI >= msA.length) throw new Error('lhsIndex out of range 0..' + (msA.length - 1));
+  if (lhsI < 0 || lhsI >= levelA.MS.length) throw new Error('lhsIndex out of range 0..' + (levelA.MS.length - 1));
   if (stoI < 0 || stoI >= BANK.length) throw new Error('stochIndex out of range 0..' + (BANK.length - 1));
 
-  var sales = { MS: msA[lhsI], PN: pnA[lhsI], HI: hiA[lhsI] };
+  var sales = { MS: pathFor('MS', lhsI), PN: pathFor('PN', lhsI), HI: pathFor('HI', lhsI) };
   var b = BANK[stoI];
 
   // ---- decompose the draw into systematic / process, matching shockFromBank exactly ----
@@ -107,7 +112,7 @@ function main() {
   function rowSales(label, vals) { var a = [label].concat(vals); for (var i = vals.length; i < YEARS.length; i++) a.push(''); return a.join(','); }
   var L = [];
   L.push('# EfficientFrontier scalar stream  seed=' + F.STOCH_SEED + '  lhsIndex=' + lhsI + '  stochIndex=' + stoI + '  growth=' + mode);
-  L.push('# sales anchors $M  MS=' + sales.MS.toFixed(4) + '  PN=' + sales.PN.toFixed(4) + '  HI=' + sales.HI.toFixed(4));
+  L.push('# sales path $M (2026..2035)  MS=[' + sales.MS.map(function (v) { return v.toFixed(1); }).join(',') + ']  PN=[' + sales.PN.map(function (v) { return v.toFixed(1); }).join(',') + ']  HI=[' + sales.HI.map(function (v) { return v.toFixed(1); }).join(',') + ']');
   L.push('# Paste each value range into the indicated Scalars! cells, then recalc. Years run 2026..2055.');
   L.push(rowYears('label \\ year', YEARS));
   L.push(rowSales('Sales scalar MS (C12:L12)', salesScalar.MS));
@@ -149,7 +154,7 @@ function main() {
   fs.writeFileSync(outCsv.replace(/\.csv$/, '.json'), JSON.stringify(json, null, 2) + '\n');
 
   console.log('scenario: lhsIndex=' + lhsI + ' stochIndex=' + stoI + ' growth=' + mode + '  sales MS/PN/HI=' +
-    sales.MS.toFixed(2) + '/' + sales.PN.toFixed(2) + '/' + sales.HI.toFixed(2));
+    sales.MS[0].toFixed(2) + '/' + sales.PN[0].toFixed(2) + '/' + sales.HI[0].toFixed(2) + ' (2026 anchor)');
   console.log('online RBC no-note 26-30 = ' + [2026, 2027, 2028, 2029, 2030].map(function (yy) { return rbcNoNote[yy].toFixed(3); }).join(' / '));
   console.log('online RBC w/note  26-30 = ' + [2026, 2027, 2028, 2029, 2030].map(function (yy) { return rbcNote[yy].toFixed(3); }).join(' / '));
   console.log('wrote ' + outCsv);

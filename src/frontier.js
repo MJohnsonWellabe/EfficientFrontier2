@@ -134,6 +134,9 @@
       S.evRetained = riOn ? EFENG.buildRetainedEV(S.ev, S.reinsurance) : null;
       var evWork = S.evRetained || S.ev;
       S.ev2026 = { rows: evWork.rows.filter(function (r) { return r.iy === '2026'; }), maxP: evWork.maxP };
+      // evProg: the multi-year new-business program cohorts (issue years 2026-2030) — the fast
+      // stochastic path (stochMetrics) recalcs/values only these, the way ev2026 isolated 2026.
+      S.evProg = { rows: evWork.rows.filter(function (r) { var n = parseInt(r.iy, 10); return isFinite(n) && n >= 2026 && n <= 2030; }), maxP: evWork.maxP };
       var P = S.params.assum, ys = S.years.filter(function (y) { return y <= 2035; });
       var vnbs = {}, origFull = {};
       var vnb26 = {};
@@ -254,7 +257,10 @@
       // treaty is ON, so MS cession is inherited here without re-applying it; S.ev when OFF.
       var rec = EFENG.recalcEV(S.evRetained || S.ev, sc), recNB = {}, recFull = {}, recLIF = {};
       var nComb = (nier && nier.combined) || null, nProc = (nier && nier.proc) || null;
-      var recClaims = {}; PRODS.forEach(function (c) { recNB[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, nierShift: (nComb && nComb[c]) || null }); recFull[c] = evFullBook(rec, c, nComb && nComb[c], nProc && nProc[c]); recLIF[c] = EFENG.evMonthly(rec, c, 'LivesInForce1'); recClaims[c] = EFENG.evMonthly(rec, c, 'IncClaims'); });
+      // recNB is the MULTI-YEAR PROGRAM new business: cohorts issued 2026-2030 only (iyMax:2030).
+      // de/portNPV/portIRR below are therefore the 2026-2030 new-business program (the optimization
+      // objective). recFull (TAC) keeps ALL cohorts so the RBC/TAC roll-forward stays realistic.
+      var recClaims = {}; PRODS.forEach(function (c) { recNB[c] = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, iyMax: 2030, nierShift: (nComb && nComb[c]) || null }); recFull[c] = evFullBook(rec, c, nComb && nComb[c], nProc && nProc[c]); recLIF[c] = EFENG.evMonthly(rec, c, 'LivesInForce1'); recClaims[c] = EFENG.evMonthly(rec, c, 'IncClaims'); });
       var baseSc = S.baseline.surplusCalc, ys = S.years.filter(function (y) { return y <= 2035; }), sr = {};
       var prevTac = null, prevBt = null;   // cumulative TAC roll-forward state (no-note basis; note added by applyNoteToSurplus)
       ys.forEach(function (y) {
@@ -281,6 +287,8 @@
       // required-capital relief is already inherited via baseSc (its MS charges were scaled).
       var rB = S.baselineReins;
       if (rB) applyReinsToSurplus(sr, rB.tacFlow);
+      // Program DE = 2026-2030 new-business cohorts (recNB, iyMax:2030) + inherited treaty cash.
+      // portNPV/portIRR are the whole-program (2026-2030) value — the frontier's objective.
       var de = {}, cumDE = {}, cum = 0; for (var y = 2026; y <= 2055; y++) { de[y] = PRODS.reduce(function (s, c) { return s + (recNB[c].annual.DE[y] || 0); }, 0) + (rB ? (rB.commAT[y] || 0) : 0); cum += de[y]; cumDE[y] = cum; }
       var deStream = []; for (var y = 2026; y <= 2055; y++)deStream.push(de[y]);
       var portIRR = EFENG.irr(deStream), portNPV = EFENG.npv(P.disc, deStream);
@@ -308,9 +316,12 @@
       };
     }
 
+    // Fast-mode stochastic metric: the whole-program (2026-2030 new-business) PVDE/IRR/drawdown.
+    // Recalcs/values only the program cohorts (S.evProg) for speed — the multi-year analogue of the
+    // old 2026-only fast path. (Heavier than 2026-only: 5 issue-year cohorts vs 1.)
     function stochMetrics(sales, claims, lapse, nier) {
-      var P = S.params.assum, sc = mkScalars(sales, claims, lapse), rec = EFENG.recalcEV(S.ev2026 || S.ev, sc), de = [];
-      PRODS.forEach(function (c) { var v = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, iy: '2026', nierShift: (nier && nier[c]) || null }); for (var y = 2026; y <= 2055; y++) { de[y - 2026] = (de[y - 2026] || 0) + (v.annual.DE[y] || 0); } });
+      var P = S.params.assum, sc = mkScalars(sales, claims, lapse), rec = EFENG.recalcEV(S.evProg || S.ev, sc), de = [];
+      PRODS.forEach(function (c) { var v = EFENG.buildVNB(rec, c, { assum: P }, { nMonths: 360, iyMax: 2030, nierShift: (nier && nier[c]) || null }); for (var y = 2026; y <= 2055; y++) { de[y - 2026] = (de[y - 2026] || 0) + (v.annual.DE[y] || 0); } });
       var cum = 0, dd = 0; for (var t = 0; t < de.length; t++) { cum += (de[t] || 0); if (cum < dd) dd = cum; }
       return { irr: EFENG.irr(de), npv: EFENG.npv(P.disc, de), dd: dd };
     }
@@ -321,12 +332,14 @@
       if (m.minRBC < c.rbcFloor) f.push(lbl(1, 'RBC_FLOOR', 'min RBC ' + rx(m.minRBC) + ' < floor ' + rx(c.rbcFloor), 'C1: Min RBC ≥ ' + rx(c.rbcFloor)));
       var minTacChg = Math.min.apply(null, Object.values(m.tacChg));
       if (minTacChg < c.tacChgFloor) f.push(lbl(2, 'TAC_CHG', 'min ΔTAC/BOP TAC ' + pct(minTacChg) + ' < floor ' + pct(c.tacChgFloor), 'C2: ΔTAC/BOP TAC ≥ ' + pct(c.tacChgFloor)));
-      if (c.irr3on && m.irr26 != null && m.irr26 < m.wtdIRR) f.push(lbl(3, 'IRR_TARGET', '2026-issue IRR ' + pct(m.irr26) + ' < target ' + pct(m.wtdIRR), 'C3: 2026-issue IRR ≥ weighted target'));
-      if (stochR && stochR.irrs && stochR.irrs.length) { var bl = stochR.irrs.filter(function (x) { return x != null && x < c.irrA; }).length, prob = bl / stochR.irrs.length; if (prob > c.irrB) f.push(lbl(4, 'IRR_TAIL', 'P(2026-issue IRR<' + pct(c.irrA) + ')=' + pct(prob) + ' > ' + pct(c.irrB), 'C4: 2026-issue IRR tail risk')); }
-      var dy = 2025 + c.deYr; if ((m.de26[dy] || 0) <= 0) f.push(lbl(5, 'DE_BY_YEAR', '2026-issue DE yr ' + c.deYr + ' (' + dy + ')=' + fmt(m.de26[dy] || 0, 2), 'C5: 2026-issue DE > 0 by yr ' + c.deYr));
-      var cy = 2025 + c.cumDeYr; if ((m.cumDE26[cy] || 0) <= 0) f.push(lbl(6, 'CUMDE_BY_YEAR', '2026-issue CumDE yr ' + c.cumDeYr + ' (' + cy + ')=' + fmt(m.cumDE26[cy] || 0, 2), 'C6: 2026-issue CumDE > 0 by yr ' + c.cumDeYr));
-      var minCumDE26 = Math.min.apply(null, Object.values(m.cumDE26)); if (c.cumDEFloor != null && minCumDE26 < c.cumDEFloor) f.push(lbl(7, 'CUMDE_FLOOR', 'min 2026-issue cumDE $' + fmt(minCumDE26, 1) + 'M < floor $' + fmt(c.cumDEFloor, 1) + 'M', 'C7: CumDE floor ≥ $' + fmt(c.cumDEFloor, 1) + 'M'));
-      if (c.de1Floor != null && (m.de26[2026] || 0) < c.de1Floor) f.push(lbl(8, 'DE1_FLOOR', '2026 (year-1) DE $' + fmt(m.de26[2026] || 0, 1) + 'M < floor $' + fmt(c.de1Floor, 1) + 'M', 'C8: Year-1 DE floor ≥ $' + fmt(c.de1Floor, 1) + 'M'));
+      // C3-C8 are scoped to the 2026-2030 new-business PROGRAM (m.portIRR / m.de / m.cumDE) to match
+      // the multi-year objective; C5/C6 measure DE timing from the program's first year (2026).
+      if (c.irr3on && m.portIRR != null && m.portIRR < m.wtdIRR) f.push(lbl(3, 'IRR_TARGET', 'program IRR ' + pct(m.portIRR) + ' < target ' + pct(m.wtdIRR), 'C3: 2026-2030 program IRR ≥ weighted target'));
+      if (stochR && stochR.irrs && stochR.irrs.length) { var bl = stochR.irrs.filter(function (x) { return x != null && x < c.irrA; }).length, prob = bl / stochR.irrs.length; if (prob > c.irrB) f.push(lbl(4, 'IRR_TAIL', 'P(program IRR<' + pct(c.irrA) + ')=' + pct(prob) + ' > ' + pct(c.irrB), 'C4: 2026-2030 program IRR tail risk')); }
+      var dy = 2025 + c.deYr; if ((m.de[dy] || 0) <= 0) f.push(lbl(5, 'DE_BY_YEAR', 'program DE yr ' + c.deYr + ' (' + dy + ')=' + fmt(m.de[dy] || 0, 2), 'C5: program DE > 0 by yr ' + c.deYr));
+      var cy = 2025 + c.cumDeYr; if ((m.cumDE[cy] || 0) <= 0) f.push(lbl(6, 'CUMDE_BY_YEAR', 'program CumDE yr ' + c.cumDeYr + ' (' + cy + ')=' + fmt(m.cumDE[cy] || 0, 2), 'C6: program CumDE > 0 by yr ' + c.cumDeYr));
+      var minCumDEp = Math.min.apply(null, Object.values(m.cumDE)); if (c.cumDEFloor != null && minCumDEp < c.cumDEFloor) f.push(lbl(7, 'CUMDE_FLOOR', 'min program cumDE $' + fmt(minCumDEp, 1) + 'M < floor $' + fmt(c.cumDEFloor, 1) + 'M', 'C7: CumDE floor ≥ $' + fmt(c.cumDEFloor, 1) + 'M'));
+      if (c.de1Floor != null && (m.de[2026] || 0) < c.de1Floor) f.push(lbl(8, 'DE1_FLOOR', '2026 (year-1) program DE $' + fmt(m.de[2026] || 0, 1) + 'M < floor $' + fmt(c.de1Floor, 1) + 'M', 'C8: Year-1 DE floor ≥ $' + fmt(c.de1Floor, 1) + 'M'));
       if (stochR && stochR.minRBCs && stochR.minRBCs.length && c.rbcTailX != null && c.rbcTailY != null) {   // C9 trough-RBC tail (Slow mode only)
         var rb = stochR.minRBCs.filter(function (r) { return r != null && r < c.rbcTailX; }).length, rprob = rb / stochR.minRBCs.length;
         if (rprob > c.rbcTailY) f.push(lbl(9, 'RBC_TAIL', 'P(trough RBC<' + rx(c.rbcTailX) + ')=' + pct(rprob) + ' > ' + pct(c.rbcTailY), 'C9: RBC tail — P(trough RBC < ' + rx(c.rbcTailX) + ') ≤ ' + pct(c.rbcTailY)));
@@ -355,23 +368,35 @@
       opts = opts || {};
       var n = S.nScen, ns = S.nStoch, slow = S.slowMode;
       setSeed(S.seed != null ? S.seed : STOCH_SEED);
-      var msA = lhs(n, S.bounds.MS[0], S.bounds.MS[1]), pnA = lhs(n, S.bounds.PN[0], S.bounds.PN[1]), hiA = lhs(n, S.bounds.HI[0], S.bounds.HI[1]);
+      // Multi-year decision: per product sample the 2026 starting level (S.bounds) AND a growth rate
+      // for EACH program year 2027-2030 drawn from that product's single [lo,hi] growthRange (so a path
+      // can grow some years and dip another — the "only go down when RBC requires" behavior is emergent:
+      // value-maximization + the hard RBC floor (C1) keep declines off the frontier unless they relieve
+      // a binding RBC constraint). 2031-2035 issuance is held flat at the 2030 level. All LHS arrays are
+      // prebuilt from the seed so checkpoint/resume reproduces the identical set.
+      var GR = S.growthRange || { MS: [0, 0], PN: [0, 0], HI: [0, 0] };
+      var PROG_GYEARS = [2027, 2028, 2029, 2030];
+      var levelA = { MS: lhs(n, S.bounds.MS[0], S.bounds.MS[1]), PN: lhs(n, S.bounds.PN[0], S.bounds.PN[1]), HI: lhs(n, S.bounds.HI[0], S.bounds.HI[1]) };
+      var grA = {}; PRODS.forEach(function (c) { grA[c] = PROG_GYEARS.map(function () { return lhs(n, GR[c][0], GR[c][1]); }); });
+      var nYears = (S.params.scalars.years || []).length || 10;   // 2026..2035
+      function pathFor(c, i) { var arr = [levelA[c][i]], prev = arr[0]; for (var yi = 0; yi < PROG_GYEARS.length; yi++) { prev = prev * (1 + grA[c][yi][i]); arr.push(prev); } while (arr.length < nYears) arr.push(arr[PROG_GYEARS.length]); return arr; }
       var BANK = buildShockBank(ns), _yt = _now();
       var results = (opts.startResults && opts.startResults.length) ? opts.startResults.slice(0, n) : [];
       for (var i = results.length; i < n; i++) {
-        var sales = { MS: msA[i], PN: pnA[i], HI: hiA[i] }, u = { MS: 1, PN: 1, HI: 1 };
-        var det = buildScen(sales, u, u);
+        var salesPath = { MS: pathFor('MS', i), PN: pathFor('PN', i), HI: pathFor('HI', i) }, u = { MS: 1, PN: 1, HI: 1 };
+        var sales = { MS: levelA.MS[i], PN: levelA.PN[i], HI: levelA.HI[i] };   // 2026 starting mix (display)
+        var det = buildScen(salesPath, u, u);
         var sIRRs = [], sNPVs = [], sDD = [], sMinRBC = [], stochScalarsList = [];
         for (var k = 0; k < ns; k++) {
           var _s = shockFromBank(BANK[k]), cm = _s.cm, lm = _s.lm, nm = _s.nm;
           stochScalarsList.push({ claims: Object.assign({}, cm), lapse: Object.assign({}, lm), nier: Object.assign({}, nm), nierProc: Object.assign({}, _s.nmProc) });
-          if (slow) { var sm = buildScen(sales, cm, lm, { combined: _s.nm, proc: _s.nmProc }); sIRRs.push(sm.irr26); sNPVs.push(sm.npv26); sDD.push(_ddFromCum(sm.cumDE26)); sMinRBC.push(sm.minRBC); }
-          else { var sm = stochMetrics(sales, cm, lm, nm); sIRRs.push(sm.irr); sNPVs.push(sm.npv); sDD.push(sm.dd); }
+          if (slow) { var sm = buildScen(salesPath, cm, lm, { combined: _s.nm, proc: _s.nmProc }); sIRRs.push(sm.portIRR); sNPVs.push(sm.portNPV); sDD.push(_ddFromCum(sm.cumDE)); sMinRBC.push(sm.minRBC); }
+          else { var sm = stochMetrics(salesPath, cm, lm, nm); sIRRs.push(sm.irr); sNPVs.push(sm.npv); sDD.push(sm.dd); }
           if (opts.onYield && _now() - _yt > 40) { if (opts.onTick) opts.onTick(i, k, n, ns); await opts.onYield(); _yt = _now(); }
         }
-        var dr = downsideRisk(sNPVs, sDD, det.npv26);
+        var dr = downsideRisk(sNPVs, sDD, det.portNPV);
         var fails = evalCons(det, slow ? { irrs: sIRRs, minRBCs: sMinRBC } : { irrs: sIRRs });
-        results.push({ id: i + 1, sales: sales, portIRR: det.irr26, portNPV: det.npv26, wtdIRR: det.wtdIRR, risk: dr.risk, portIRRAll: det.portIRR, portNPVAll: det.portNPV, irr26: det.irr26, npv26: det.npv26, de26: det.de26, cumDE26: det.cumDE26, minRBC: det.minRBC, de: det.de, cumDE: det.cumDE, atiBopCS: det.atiBopCS, maxDecline: det.maxDecline, tacChg: det.tacChg, scalars: det.scalars, stochIRRs: sIRRs, stochNPVs: sNPVs, stochMinRBC: slow ? sMinRBC : null, stochScalars: stochScalarsList, riskSD: dr.sd, cte90: dr.cte90, semidev: dr.semidev, ddMed: dr.ddMed, ddWorst: dr.ddWorst, stochDD: sDD, failures: fails, feasible: fails.length === 0, isFrontier: false });
+        results.push({ id: i + 1, sales: sales, salesPath: salesPath, portIRR: det.portIRR, portNPV: det.portNPV, wtdIRR: det.wtdIRR, risk: dr.risk, irr26: det.irr26, npv26: det.npv26, de26: det.de26, cumDE26: det.cumDE26, minRBC: det.minRBC, de: det.de, cumDE: det.cumDE, atiBopCS: det.atiBopCS, maxDecline: det.maxDecline, tacChg: det.tacChg, scalars: det.scalars, stochIRRs: sIRRs, stochNPVs: sNPVs, stochMinRBC: slow ? sMinRBC : null, stochScalars: stochScalarsList, riskSD: dr.sd, cte90: dr.cte90, semidev: dr.semidev, ddMed: dr.ddMed, ddWorst: dr.ddWorst, stochDD: sDD, failures: fails, feasible: fails.length === 0, isFrontier: false });
         if (opts.onPartial) opts.onPartial(results[results.length - 1], i);
         if (opts.onProgress) opts.onProgress(i + 1, n);
         if (opts.onYield) await opts.onYield();

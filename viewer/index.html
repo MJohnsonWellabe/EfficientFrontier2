@@ -189,7 +189,7 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
     <div class="hint" style="margin-bottom:10px;font-weight:600">Original sales anchor ($M/yr) — 2026–2035</div>
     <div class="hscroll"><table class="atbl" id="origSalesTbl"></table></div>
     <div id="growthSection" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">
-      <div class="hint" style="margin-bottom:6px;font-weight:600">Annual sales growth (%/yr) — 2027–2035 <span style="font-weight:400;color:var(--muted)">· compounded off the 2026 anchor; applied to efficient-frontier scenario draws only, never the baseline</span></div>
+      <div class="hint" style="margin-bottom:6px;font-weight:600">Annual sales growth range (%/yr) per product <span style="font-weight:400;color:var(--muted)">· the multi-year frontier samples a growth rate per year 2027–2030 within each product's [min,max]; 2031–2035 held flat at the 2030 level; scenario draws only, never the baseline</span></div>
       <div class="hscroll"><table class="atbl" id="growthTbl"></table></div>
       <div id="growthFill" style="margin-top:8px"></div>
     </div>
@@ -237,21 +237,21 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
     <label class="f"><span class="lb">Constraint 1 — Min RBC ratio (2026–2030)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_rbc" value="4.0" step="0.1"><span>×</span></div><p class="hint" style="margin-top:4px">Required capital = post-covariance × 1.03. Reject if min RBC over 2026–2030 falls below this.</p></label>
     <label class="f"><span class="lb">Constraint 2 — Min change in TAC / BOP TAC</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_tacchg" value="-12" step="0.5"><span>%</span></div><p class="hint" style="margin-top:4px">Year-over-year change in Total Adjusted Capital divided by beginning-of-period TAC. Reject if this falls below the floor in any year. (Replaces the former ATI/C&amp;S test and absorbs the old C7 TAC-decline limit.)</p></label>
-    <label class="f" style="background:#f5f8fa;border:1px solid var(--line);border-radius:7px;padding:12px"><span class="lb">Constraint 3 — 2026-issue IRR vs sales-weighted target</span><div style="margin:6px 0"><label><input type="checkbox" id="c_irr3on" checked>Enforce</label></div><p class="hint">Reject if the <strong>2026 issue-year</strong> IRR &lt; sales-weighted average of product hurdle rates (weighted by the 2026 sales mix). Pre-2026 in-force is excluded.</p></label>
+    <label class="f" style="background:#f5f8fa;border:1px solid var(--line);border-radius:7px;padding:12px"><span class="lb">Constraint 3 — program IRR vs sales-weighted target</span><div style="margin:6px 0"><label><input type="checkbox" id="c_irr3on" checked>Enforce</label></div><p class="hint">Reject if the <strong>2026–2030 program</strong> IRR &lt; sales-weighted average of product hurdle rates (weighted by the 2026 sales mix). Pre-2026 in-force is excluded.</p></label>
     <div class="c4box">
-      <p style="font-size:12px;color:var(--muted);margin-bottom:10px"><strong>Constraint 4 — 2026-issue IRR tail risk:</strong> The probability that the <strong>2026 issue-year</strong> IRR falls below <em>a</em>% must be less than <em>b</em>%. Measured across stochastic runs per scenario. Pre-2026 in-force is excluded.</p>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px"><strong>Constraint 4 — program IRR tail risk:</strong> The probability that the <strong>2026–2030 program</strong> IRR falls below <em>a</em>% must be less than <em>b</em>%. Measured across stochastic runs per scenario. Pre-2026 in-force is excluded.</p>
       <div class="g4">
         <label class="f" style="margin:0"><span class="lb"><em>a</em> — IRR threshold</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_irra" value="8" step="0.5"><span>%</span></div></label>
         <label class="f" style="margin:0"><span class="lb"><em>b</em> — max probability</span><div style="display:flex;gap:5px;align-items:center"><input type="number" id="c_irrb" value="15" step="1"><span>%</span></div></label>
       </div>
     </div>
-    <label class="f"><span class="lb">Constraint 5 — 2026-issue DE positive by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_deyr" value="4" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px">Distributable earnings from the <strong>2026 issue year only</strong> (all 3 products summed) must be positive in projection year N (year 4 = calendar year 2029). Pre-2026 in-force is excluded.</p></label>
-    <label class="f"><span class="lb">Constraint 6 — 2026-issue cumulative DE by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumdeyr" value="10" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px">Cumulative distributable earnings from the <strong>2026 issue year only</strong> (all 3 products summed) must turn positive by year N (year 10 = calendar year 2035). Pre-2026 in-force is excluded.</p></label>
+    <label class="f"><span class="lb">Constraint 5 — program DE positive by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_deyr" value="7" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px">Distributable earnings from the <strong>2026–2030 new-business program</strong> (all 3 products summed) must be positive in projection year N (year 7 = calendar year 2032). A 5-year issuance program turns cash-positive ~2031, so the default is later than the old single-cohort value. Pre-2026 in-force is excluded.</p></label>
+    <label class="f"><span class="lb">Constraint 6 — program cumulative DE by year</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumdeyr" value="10" min="1" max="30"><span>yr</span></div><p class="hint" style="margin-top:4px">Cumulative distributable earnings from the <strong>2026–2030 new-business program</strong> (all 3 products summed) must turn positive by year N (year 10 = calendar year 2035). Pre-2026 in-force is excluded.</p></label>
   </div>
   <div style="margin-top:12px;padding:12px 14px;background:#f5f8fa;border:1px solid var(--line);border-radius:7px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 7 — CumDE floor (max negative 2026-issue cumulative DE)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumfloor" value="-180" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px"><strong>2026 issue-year</strong> cumulative DE (all 3 products) must not fall below this floor in any year. Pre-2026 in-force is excluded.</p></label>
-      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 8 — Year-1 DE floor (max negative 2026 first-year DE)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_de1floor" value="-150" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px">Caps first-year acquisition strain for the 2026 cohort (2026 issues only, all 3 products; pre-2026 in-force excluded). Baseline 2026 DE is about −$109M; the default −$150M leaves ~$41M of headroom so the base case clears and only materially more aggressive single-year mixes are gated. Its evidence panel is on the Constraint Evidence tab, and it appears in the What-if shadow prices.</p></label>
+      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 7 — CumDE floor (max negative program cumulative DE)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_cumfloor" value="-650" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px"><strong>2026–2030 program</strong> cumulative DE (all 3 products) must not fall below this floor in any year — the deepest capital drawdown across the 5-year issuance program (much deeper than a single cohort, hence the larger default). Pre-2026 in-force is excluded.</p></label>
+      <label class="f" style="margin:0;flex:0 0 auto"><span class="lb">Constraint 8 — Year-1 DE floor (max negative 2026 first-year DE)</span><div style="display:flex;gap:6px;align-items:center"><input type="number" id="c_de1floor" value="-175" step="10"><span>$M</span></div><p class="hint" style="margin-top:4px">Caps first-year (2026) acquisition strain — only the 2026 cohort issues in 2026, so this stays a single-year guardrail (all 3 products; pre-2026 in-force excluded). Its evidence panel is on the Constraint Evidence tab, and it appears in the What-if shadow prices.</p></label>
       <div><button class="btn ghost sm" onclick="(function(){var d=document.getElementById('cumDE-baseline-tbl');d.style.display=d.style.display==='none'?'block':'none';})()">Show baseline CumDE</button>
       <div id="cumDE-baseline-tbl" style="display:none;margin-top:8px;overflow:auto"><div id="cumDEBslTbl"></div></div></div>
     </div>
@@ -684,11 +684,11 @@ tr.hsec td{background:var(--ink2);color:#d8e8ed;font-family:var(--sans);font-wei
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- ?v=… cache-busts the engine + app on GitHub Pages; bump it whenever viewer/engine JS changes (worker.js inherits this version). -->
-<script src="../src/vnb.js?v=219"></script>
-<script src="../src/ev-recalc.js?v=219"></script>
-<script src="../src/rbc-surplus.js?v=219"></script>
-<script src="../src/reinsurance.js?v=219"></script>
-<script src="../src/frontier.js?v=219"></script>
-<script src="app.js?v=219"></script>
+<script src="../src/vnb.js?v=220"></script>
+<script src="../src/ev-recalc.js?v=220"></script>
+<script src="../src/rbc-surplus.js?v=220"></script>
+<script src="../src/reinsurance.js?v=220"></script>
+<script src="../src/frontier.js?v=220"></script>
+<script src="app.js?v=220"></script>
 </body>
 </html>

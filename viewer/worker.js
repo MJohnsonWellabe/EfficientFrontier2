@@ -10,7 +10,7 @@ importScripts('../src/vnb.js' + _v, '../src/ev-recalc.js' + _v, '../src/rbc-surp
 // and the runner's buildState — the engine reads these fields off S).
 function buildStateFromMsg(d) {
   var EFENG = self.EFENG;
-  var S = Object.assign({}, d.cfg);            // bounds, hurdles, cons, growth, surplusNote, seed,
+  var S = Object.assign({}, d.cfg);            // bounds, hurdles, cons, growthRange, surplusNote, seed,
                                                // nScen, nStoch, slowMode, σ tables, origSales, years, params
   S.ev = EFENG.loadEV(d.evText);
   S.ts = EFENG.loadTS(d.tsText);

@@ -22,8 +22,8 @@ function runFrontier(S, F) { return F.runSweep(); }
 
 async function main() {
   var mode = (process.argv[2] || 'zero').toLowerCase();
-  var growth = (mode === 'default') ? D.defaultGrowth() : D.zeroGrowth();
-  var S = D.buildState(EFENG, DATA, growth);
+  var growthRange = (mode === 'default') ? D.defaultGrowthRange() : D.zeroGrowthRange();
+  var S = D.buildState(EFENG, DATA, growthRange);
   if (process.argv.indexOf('slow') >= 0) S.slowMode = true;   // Slow mode: per-draw trough-RBC tail
   var F = FRONTIER.create(S, EFENG);
   F.computeBaseline();
@@ -33,7 +33,7 @@ async function main() {
     meta: {
       mode: mode, generatedAt: new Date().toISOString(),
       seed: F.STOCH_SEED, nScen: S.nScen, nStoch: S.nStoch,
-      bounds: S.bounds, growth: S.growth
+      bounds: S.bounds, growthRange: S.growthRange, progYears: S.progYears
     },
     baseline: {
       vnb: {
@@ -46,7 +46,9 @@ async function main() {
     },
     scenarios: results.map(function (r) {
       return {
-        id: r.id, sales: r.sales, npv26: r.npv26, irr26: r.irr26, wtdIRR: r.wtdIRR,
+        id: r.id, sales: r.sales, salesPath: r.salesPath,   // sales = 2026 starting mix; salesPath = full 2026-2035 path
+        portNPV: r.portNPV, portIRR: r.portIRR,   // 2026-2030 new-business program PVDE/IRR (the objective)
+        npv26: r.npv26, irr26: r.irr26, wtdIRR: r.wtdIRR,
         risk: r.risk, riskSD: r.riskSD, cte90: r.cte90, ddWorst: r.ddWorst, minRBC: r.minRBC,
         feasible: r.feasible, isFrontier: r.isFrontier, failCodes: r.failures.map(function (f) { return f.code; }),
         stochIRRs: r.stochIRRs, stochNPVs: r.stochNPVs, stochDD: r.stochDD

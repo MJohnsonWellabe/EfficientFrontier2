@@ -43,11 +43,14 @@ function loadEV(text) {
   return { rows: out, maxP };
 }
 // sum monthly vector for product+newbus filter (nb optional) and variable
-function evMonthly(ev, prod, varName, nb, iyFilter) {
+function evMonthly(ev, prod, varName, nb, iyFilter, iyMax) {
   // iyFilter (optional): restrict to a single issue-year cohort, e.g. '2026'.
-  // When omitted, behavior is identical to before (all cohorts) and uses the
+  // iyMax (optional): restrict to cohorts whose NUMERIC issue year is <= iyMax (e.g. 2030
+  //   for the multi-year 2026-2030 new-business program); non-numeric issue years like
+  //   '<2026' are unaffected by iyMax (the back book is dropped by the nb='N' filter anyway).
+  // When BOTH are omitted, behavior is identical to before (all cohorts) and uses the
   // compiled index fast path — the full calc engine is unchanged for default calls.
-  if (ev._idx && iyFilter === undefined) {
+  if (ev._idx && iyFilter === undefined && iyMax == null) {
     const vl = varName.toLowerCase();
     const k = prod + '|' + vl + '|' + (nb !== undefined ? nb : '');
     const hit = ev._idx[k] || (nb !== undefined ? ev._idx[prod + '|' + vl + '|'] : null);
@@ -60,6 +63,7 @@ function evMonthly(ev, prod, varName, nb, iyFilter) {
     if (rec.prod !== prod) continue;
     if (nb !== undefined && rec.nb !== nb) continue;
     if (iyFilter !== undefined && String(rec.iy) !== String(iyFilter)) continue;
+    if (iyMax != null) { const iyn = parseInt(rec.iy, 10); if (isFinite(iyn) && iyn > iyMax) continue; }
     if (rec.varName.toLowerCase() !== vlow) continue;
     for (let p = 0; p <= ev.maxP; p++) out[p] += rec.vals[p];
   }
@@ -106,18 +110,19 @@ function buildVNB(ev, prod, params, opts) {
   const lastP = Math.min(ev.maxP, nMonths - 1);
   const nb = opts.allBook ? undefined : 'N';
   const iyf = opts.iy;   // optional single issue-year filter (e.g. '2026'); undefined = all cohorts
+  const iyMax = opts.iyMax;   // optional upper issue-year bound (e.g. 2030 for the 2026-2030 program); undefined = no cap
   const P = params.assum, maxP = ev.maxP, baseYear = 2025;
   const tax = P.tax, infl = P.inflation, inflStart = P.inflStart;
-  const EarnedPrem = evMonthly(ev, prod, 'EarnedPrem', nb, iyf);
-  const IncClaims = evMonthly(ev, prod, 'IncClaims', nb, iyf);
-  const Comm = evMonthly(ev, prod, 'Comm', nb, iyf);
-  const PremTax = evMonthly(ev, prod, 'PremTax', nb, iyf);
-  const CLRes = evMonthly(ev, prod, 'CLRes', nb, iyf);
-  const TabRes = evMonthly(ev, prod, 'TabRes', nb, iyf);
-  const TS = evMonthly(ev, prod, 'TS', nb, iyf);
-  const LIF = evMonthly(ev, prod, 'LivesInForce1', nb, iyf);
-  const Issued = evMonthly(ev, prod, 'LivesIssued', nb, iyf);
-  const ChgLoad = evMonthly(ev, prod, 'Change In Loading', nb, iyf);
+  const EarnedPrem = evMonthly(ev, prod, 'EarnedPrem', nb, iyf, iyMax);
+  const IncClaims = evMonthly(ev, prod, 'IncClaims', nb, iyf, iyMax);
+  const Comm = evMonthly(ev, prod, 'Comm', nb, iyf, iyMax);
+  const PremTax = evMonthly(ev, prod, 'PremTax', nb, iyf, iyMax);
+  const CLRes = evMonthly(ev, prod, 'CLRes', nb, iyf, iyMax);
+  const TabRes = evMonthly(ev, prod, 'TabRes', nb, iyf, iyMax);
+  const TS = evMonthly(ev, prod, 'TS', nb, iyf, iyMax);
+  const LIF = evMonthly(ev, prod, 'LivesInForce1', nb, iyf, iyMax);
+  const Issued = evMonthly(ev, prod, 'LivesIssued', nb, iyf, iyMax);
+  const ChgLoad = evMonthly(ev, prod, 'Change In Loading', nb, iyf, iyMax);
   const prodName = { MS: 'Medicare Supplement', PN: 'Preneed', HI: 'Hospital Indemnity' }[prod];
   const isPN = (prod === 'PN') && (opts.pnShift !== false);   // stacked VNB layout references $C$1 (MS), disabling the PN acq/maint shift
 
